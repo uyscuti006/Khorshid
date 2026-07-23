@@ -7,7 +7,12 @@ import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
@@ -93,34 +98,63 @@ class MainActivity : HelperBaseComponentActivity() {
         super.onCreate(savedInstanceState)
         mainViewModel.onAction(MainAction.Initialize)
 
+        lifecycleScope.launch {
+            mainViewModel.connectRequest.collect {
+                if (SettingsManager.isVpnMode()) {
+                    val intent = VpnService.prepare(this@MainActivity)
+                    if (intent == null) startV2Ray() else requestVpnPermission.launch(intent)
+                } else {
+                    startV2Ray()
+                }
+            }
+        }
+
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
     @Composable
     override fun ScreenContent() {
-        MainScreen(
-            mainViewModel = mainViewModel,
-            onAction = { action ->
-                when (action) {
-                    MainAction.ToggleService -> handleFabAction()
-                    MainAction.TestCurrentServer -> handleLayoutTestClick()
-                    MainAction.ImportQRcode -> importQRcode()
-                    MainAction.ImportClipboard -> importClipboard()
-                    MainAction.ImportConfigLocal -> importConfigLocal()
-                    is MainAction.ImportManually -> importManually(action.type)
-                    MainAction.RestartService -> restartV2Ray()
-                    MainAction.LocateSelectedServer -> mainViewModel.triggerLocateSelectedServer()
-                    is MainAction.SelectServer -> setSelectServer(action.guid)
-                    is MainAction.EditServer -> editServer(action.guid, action.profile)
-                    is MainAction.ShareClipboard -> shareToClipboard(action.guid)
-                    is MainAction.ShareFullContent -> shareFullContentAsync(action.guid)
-                    else -> mainViewModel.onAction(action)
-                }
-            },
-            onNavigate = { route -> navigateTo(route) },
-            shareMethodEntries = resources.getStringArray(R.array.share_method).toList(),
-            shareMethodMoreEntries = resources.getStringArray(R.array.share_method_more).toList()
-        )
+        var isAdvancedMode by remember { mutableStateOf(false) }
+
+        if (!isAdvancedMode) {
+            SimpleMainScreen(
+                mainViewModel = mainViewModel,
+                onAction = { action: MainAction ->
+                    when (action) {
+                        MainAction.ToggleService -> handleFabAction()
+                        MainAction.ConnectFastest -> mainViewModel.onAction(action)
+                        else -> mainViewModel.onAction(action)
+                    }
+                },
+                onOpenAdvanced = { isAdvancedMode = true }
+            )
+        } else {
+            BackHandler { isAdvancedMode = false }
+            MainScreen(
+                mainViewModel = mainViewModel,
+                onAction = { action ->
+                    when (action) {
+                        MainAction.ToggleService -> handleFabAction()
+                        MainAction.TestCurrentServer -> handleLayoutTestClick()
+                        MainAction.ImportQRcode -> importQRcode()
+                        MainAction.ImportClipboard -> importClipboard()
+                        MainAction.ImportConfigLocal -> importConfigLocal()
+                        is MainAction.ImportManually -> importManually(action.type)
+                        MainAction.RestartService -> restartV2Ray()
+                        MainAction.LocateSelectedServer -> mainViewModel.triggerLocateSelectedServer()
+                        is MainAction.SelectServer -> setSelectServer(action.guid)
+                        is MainAction.EditServer -> editServer(action.guid, action.profile)
+                        is MainAction.ShareClipboard -> shareToClipboard(action.guid)
+                        is MainAction.ShareFullContent -> shareFullContentAsync(action.guid)
+                        MainAction.ConnectFastest -> mainViewModel.onAction(action)
+                        else -> mainViewModel.onAction(action)
+                    }
+                },
+                onNavigate = { route -> navigateTo(route) },
+                shareMethodEntries = resources.getStringArray(R.array.share_method).toList(),
+                shareMethodMoreEntries = resources.getStringArray(R.array.share_method_more).toList()
+            )
+        }
     }
 
     private fun shareToClipboard(guid: String): Boolean =
@@ -282,6 +316,10 @@ class MainActivity : HelperBaseComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            mainViewModel.onAction(MainAction.ConnectFastest)
+            return true
+        }
         if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_BUTTON_B) {
             moveTaskToBack(false)
             return true

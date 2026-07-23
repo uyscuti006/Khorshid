@@ -3,9 +3,6 @@ package com.v2ray.ang.ui.main
 import com.v2ray.ang.dto.GroupMapItem
 import com.v2ray.ang.dto.LocateTarget
 
-/**
- * Main UI state
- */
 data class MainUiState(
     val groups: List<GroupMapItem> = emptyList(),
     val selectedGroupId: String = "",
@@ -16,14 +13,13 @@ data class MainUiState(
     val locateTarget: LocateTarget? = null,
     val confirmRemove: Boolean = false,
     val doubleColumnDisplay: Boolean = false,
-    val shareQRCodeBitmap: android.graphics.Bitmap? = null
+    val shareQRCodeBitmap: android.graphics.Bitmap? = null,
+    val currentPingDelay: Long = -1L
 )
 
-/**
- * All possible user interaction intents
- */
 sealed interface MainAction {
     data object Initialize : MainAction
+    data object ConnectFastest : MainAction
     data object RefreshGroups : MainAction
     data object ToggleService : MainAction
     data object TestCurrentServer : MainAction

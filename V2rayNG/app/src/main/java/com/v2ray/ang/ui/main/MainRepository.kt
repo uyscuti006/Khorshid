@@ -51,21 +51,17 @@ class MainRepository(
                 AppConfig.MSG_STATE_START_FAILURE -> MainServiceEvent.StateStartFailure(
                     safeIntent.getStringExtra("content").orEmpty()
                 )
-
                 AppConfig.MSG_STATE_STOP_SUCCESS -> MainServiceEvent.StateStopSuccess
                 AppConfig.MSG_MEASURE_DELAY_SUCCESS -> MainServiceEvent.MeasureDelaySuccess(
                     safeIntent.getStringExtra("content").orEmpty()
                 )
-
                 AppConfig.MSG_MEASURE_CONFIG_SUCCESS -> MainServiceEvent.MeasureConfigSuccess
                 AppConfig.MSG_MEASURE_CONFIG_NOTIFY -> MainServiceEvent.MeasureConfigNotify(
                     safeIntent.getStringExtra("content").orEmpty()
                 )
-
                 AppConfig.MSG_MEASURE_CONFIG_FINISH -> MainServiceEvent.MeasureConfigFinish(
                     safeIntent.getStringExtra("content")
                 )
-
                 else -> null
             }
             event?.let { _mainServiceEvent.tryEmit(it) }
@@ -104,7 +100,6 @@ class MainRepository(
     }
 
     override fun getSelectServer(): String? = MmkvManager.getSelectServer()
-
     override fun setSelectServer(guid: String) = MmkvManager.setSelectServer(guid)
 
     override fun getConfirmRemove(): Boolean =
@@ -123,7 +118,6 @@ class MainRepository(
         MmkvManager.decodeSettingsBool(AppConfig.PREF_GROUP_ALL_DISPLAY)
 
     override fun getString(resId: Int): String = app.getString(resId)
-
     override fun getString(resId: Int, vararg formatArgs: Any): String = app.getString(resId, *formatArgs)
 
     override fun getSubscriptions(): List<SubscriptionCache> {
@@ -150,6 +144,8 @@ class MainRepository(
             MmkvManager.decodeServerList(groupId)
         }
 
+    override fun getAllServerGuids(): List<String> = MmkvManager.decodeAllServerList()
+
     override fun decodeServerConfig(guid: String): ProfileItem? =
         MmkvManager.decodeServerConfig(guid)
 
@@ -160,7 +156,6 @@ class MainRepository(
         MmkvManager.encodeServerList(ArrayList(guids), groupId)
 
     override fun removeServer(guid: String) = MmkvManager.removeServer(guid)
-
     override fun removeAllServer(): Int = MmkvManager.removeAllServer()
 
     override fun removeInvalidServerByGuid(guid: String): Int =
@@ -179,8 +174,7 @@ class MainRepository(
     override fun sortByTestResultsForSub(subId: String) {
         val sorted = MmkvManager.decodeServerList(subId)
             .map { guid ->
-                val delay =
-                    MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis ?: 0L
+                val delay = MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis ?: 0L
                 guid to if (delay <= 0L) Long.MAX_VALUE else delay
             }
             .sortedBy { it.second }
