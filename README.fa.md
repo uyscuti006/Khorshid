@@ -34,4 +34,4 @@
 | `Khorshid_x.x.x_arm64-v8a.apk` | بیشتر گوشی‌های امروزی (پیشنهاد اصلی) |
 | `Khorshid_x.x.x_armeabi-v7a.apk` | گوشی‌های قدیمی‌تر  |
 | `Khorshid_x.x.x_universal.apk` | روی هر گوشی‌ای کار می‌کند (حجم بیشتر) |
-| `Khorshid_x.x.x_x86` / `x86_64.apk` | شبیه‌ساز و برخی تبلت‌ها یا لپ‌تاپ‌ها |
+| `Khorshid_x.x.x_x86` / `x86_64.apk` | شبیه‌ساز و برخی تبلت‌ها |
