@@ -1,5 +1,7 @@
 <div align="center">
 
+[🇬🇧 English](README.md) | [🇮🇷 فارسی](README.fa.md)
+
 # 🦁☀️ Khorshid (خورشید)
 
 **A lightweight, modern, and minimalist V2Ray client for Android — built on v2rayNG**
