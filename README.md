@@ -18,30 +18,32 @@
 
 | | |
 |---|---|
-| 🎯 **One-tap connect** | No server list, no extra steps. |
-| ⚡ **Fastest server selection** | Fetches your subscriptions and connects to the lowest-latency server. |
-| 🎨 **Minimal interface** | v2rayNG's advanced settings are still there, just not on the main screen. |
-| 🔒 **Open source** | Built on the v2rayNG core. |
+| 🎯 **One-tap connect** | Open the app, tap once, connected. No server list on the main screen. |
+| ⚡ **Fastest server, automatically** | Fetches your subscriptions and connects to whichever server has the lowest latency. |
+| 🎨 **Minimal by default** | A simple main screen, with all of v2rayNG's advanced settings still one tap away. |
+| 🔒 **Open source** | Built on the v2rayNG core, nothing hidden. |
 
 ---
 
 ## Download
 
-Latest builds are on the **[Releases](https://github.com/uyscuti006/Khorshid/releases/latest)** page.
+Grab the latest APK from the **[Releases](https://github.com/uyscuti006/Khorshid/releases/latest)** page.
 
-| File | Use |
+Not sure which file to pick?
+
+| File | Use case |
 |---|---|
-| `arm64-v8a` | Most current phones |
-| `armeabi-v7a` | Older devices |
-| `universal` | Any device, larger file |
-| `x86` / `x86_64` | Emulators, some tablets |
+| `Khorshid_x.x.x_arm64-v8a.apk` | Most modern phones (recommended) |
+| `Khorshid_x.x.x_armeabi-v7a.apk` | Older/budget devices |
+| `Khorshid_x.x.x_universal.apk` | Works on any device, larger file size |
+| `Khorshid_x.x.x_x86` / `x86_64.apk` | Emulators, some tablets/Chromebooks |
 
 ---
 
 ## About
 
-A fork of [v2rayNG](https://github.com/2dust/v2rayNG), with a simplified UI and automatic server selection added on top.
+Khorshid is a fork of [v2rayNG](https://github.com/2dust/v2rayNG). The core — protocols, routing, the v2ray engine itself — is untouched. What's different is the front door: a one-button main screen that updates subscriptions and picks the fastest server on its own, instead of asking you to do it manually. Everything else v2rayNG offers is still there, under the advanced settings menu.
 
 ## License
 
-[GPL-3.0](LICENSE), same as v2rayNG.
+[GPL-3.0](LICENSE)
