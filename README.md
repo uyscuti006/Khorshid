@@ -19,7 +19,7 @@
 - Fetches your subscriptions on its own and picks the fastest server automatically
 - No manual server selection needed for everyday use
 - Advanced settings are unchanged, just moved off the main screen
-- Same core: same protocols, same v2ray engine, nothing removed
+- same protocols, same v2ray core, nothing removed
 
 ---
 
