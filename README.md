@@ -7,7 +7,6 @@
 **Android v2ray client based on v2rayNG**
 
 [![Release](https://img.shields.io/github/v/release/uyscuti006/Khorshid?color=orange)](https://github.com/uyscuti006/Khorshid/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/uyscuti006/Khorshid/total?color=green)](https://github.com/uyscuti006/Khorshid/releases)
 
 </div>
 
