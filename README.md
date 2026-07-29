@@ -21,7 +21,7 @@
 | 🎯 **One-tap connect** | Open the app, tap once, connected. No server list on the main screen. |
 | ⚡ **Fastest server, automatically** | Fetches your subscriptions and connects to whichever server has the lowest latency. |
 | 🎨 **Minimal by default** | A simple main screen, with all of v2rayNG's advanced settings still one tap away. |
-| 🔒 **Open source** | Built on the v2rayNG core, nothing hidden. |
+| 🔒 **Privacy** | 100% open-source, built on the v2rayNG core. |
 
 ---
 
