@@ -47,6 +47,8 @@ import java.util.Collections
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.PatternSyntaxException
+import android.net.TrafficStats
+import android.os.Process
 
 class MainViewModel(
     application: Application,
@@ -56,6 +58,8 @@ class MainViewModel(
     companion object {
         private const val DEFAULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/uyscuti006/vpn-public-configs/main/sub.txt"
         private const val DEFAULT_SUBSCRIPTION_REMARKS = "Default Subscription"
+        private const val PREF_LAST_CATEGORY = "pref_last_category"
+        private const val PREF_APP_THEME = "pref_app_theme"
     }
 
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
@@ -65,13 +69,28 @@ class MainViewModel(
     private val disconnectedText: String = dataSource.getString(R.string.connection_not_connected)
     private val connectedText: String = dataSource.getString(R.string.connection_connected)
 
+    private val initialCategory: ConfigCategory = run {
+        val savedName = MmkvManager.decodeSettingsString(PREF_LAST_CATEGORY, ConfigCategory.ALL.name)
+        if (savedName.isNullOrEmpty()) {
+            ConfigCategory.ALL
+        } else {
+            runCatching { ConfigCategory.valueOf(savedName) }.getOrDefault(ConfigCategory.ALL)
+        }
+    }
+
+    // ۲. خواندن تم ذخیره‌شده ("dark" ، "light" یا "system")
+    private val savedThemeMode: String = MmkvManager.decodeSettingsString(PREF_APP_THEME, "system") ?: "system"
+
     private val _uiState = MutableStateFlow(
         MainUiState(
             selectedGroupId = dataSource.getSelectedSubscriptionId(),
             selectedGuid = dataSource.getSelectServer(),
             statusText = disconnectedText,
             confirmRemove = dataSource.getConfirmRemove(),
-            doubleColumnDisplay = dataSource.getDoubleColumnDisplay()
+            doubleColumnDisplay = dataSource.getDoubleColumnDisplay(),
+            selectedCategory = initialCategory, // لود متد قبلی
+            isDarkMode = savedThemeMode == "dark", // لود حالت تاریک
+            hasUserToggledTheme = savedThemeMode != "system" // آیا کاربر قبلاً شخصی‌سازی کرده؟
         )
     )
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
@@ -80,6 +99,9 @@ class MainViewModel(
         extraBufferCapacity = 1
     )
     val connectRequest: SharedFlow<Unit> = _requestConnectAfterPick.asSharedFlow()
+
+    private val _restartConnectRequest = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val restartConnectRequest: SharedFlow<Unit> = _restartConnectRequest.asSharedFlow()
 
     @Volatile
     private var keywordFilter: String = ""
@@ -94,6 +116,12 @@ class MainViewModel(
     private var preloadJob: Job? = null
     private var selectedGroupLoadJob: Job? = null
     private var reloadJob: Job? = null
+    private var connectJob: Job? = null
+    private var connectionTimerJob: Job? = null
+    private var connectedTimestamp: Long = 0L
+    private var lastRxBytes = 0L
+    private var lastTxBytes = 0L
+    private var lastSpeedCheckTimestamp = 0L
 
     @Volatile
     private var testingGroupId: String? = null
@@ -118,17 +146,17 @@ class MainViewModel(
             MainServiceEvent.StateRunning -> updateRunningState(true, clearTestingText = false)
             MainServiceEvent.StateNotRunning -> updateRunningState(false, clearTestingText = false)
             MainServiceEvent.StateStartSuccess -> {
-                toastSuccess(R.string.toast_services_success)
                 updateRunningState(true)
             }
             is MainServiceEvent.StateStartFailure -> {
-                val error = event.errorMessage
-                if (error.isNotBlank()) { toastError(error) } else { toastError(R.string.toast_services_failure) }
                 updateRunningState(false)
             }
             MainServiceEvent.StateStopSuccess -> updateRunningState(false)
             is MainServiceEvent.MeasureDelaySuccess -> {
-                val delay = event.content.replace(Regex("[^0-9]"), "").toLongOrNull() ?: -1L
+                val delay = Regex("(-?\\d+)\\s*ms", RegexOption.IGNORE_CASE)
+                    .find(event.content)
+                    ?.groupValues?.get(1)
+                    ?.toLongOrNull() ?: -1L
                 _uiState.update { it.copy(statusText = event.content, currentPingDelay = delay) }
             }
             MainServiceEvent.MeasureConfigSuccess -> {
@@ -174,7 +202,37 @@ class MainViewModel(
             is MainAction.ShareQRCode -> { val bitmap = dataSource.share2QRCode(action.guid); _uiState.update { it.copy(shareQRCodeBitmap = bitmap) } }
             MainAction.DismissQRCodeDialog -> { _uiState.update { it.copy(shareQRCodeBitmap = null) } }
             MainAction.TestCurrentServer -> testCurrentServerRealPing()
-            MainAction.ToggleService, MainAction.ImportQRcode, MainAction.ImportClipboard, MainAction.ImportConfigLocal, is MainAction.ImportManually, MainAction.RestartService, MainAction.LocateSelectedServer, is MainAction.EditServer, is MainAction.ShareClipboard, is MainAction.ShareFullContent -> {}
+            MainAction.ToggleService -> {
+                connectJob?.cancel()
+                connectJob = null
+                _uiState.update { it.copy(isConnecting = false) }
+            }
+            MainAction.CancelConnect -> {
+                connectJob?.cancel()
+                connectJob = null
+                cancelAllPing()
+                _uiState.update { it.copy(isConnecting = false, statusText = disconnectedText) }
+            }
+            MainAction.ImportQRcode, MainAction.ImportClipboard, MainAction.ImportConfigLocal, is MainAction.ImportManually, MainAction.RestartService, MainAction.LocateSelectedServer, is MainAction.EditServer, is MainAction.ShareClipboard, is MainAction.ShareFullContent -> {}
+            is MainAction.SelectCategory -> {
+                MmkvManager.encodeSettings(PREF_LAST_CATEGORY, action.category.name)
+                _uiState.update { it.copy(selectedCategory = action.category) }
+                if (uiState.value.isRunning) {
+                    _restartConnectRequest.tryEmit(Unit)
+                }
+            }
+            MainAction.ToggleTheme -> {
+                _uiState.update { currentState ->
+                    val newIsDark = !currentState.isDarkMode
+                    val themeModeString = if (newIsDark) "dark" else "light"
+
+                    // ذخیره تم جدید در حافظه دائمی
+                    MmkvManager.encodeSettings(PREF_APP_THEME, themeModeString)
+
+                    currentState.copy(
+                        isDarkMode = newIsDark,
+                        hasUserToggledTheme = true) }
+            }
         }
     }
 
@@ -300,6 +358,10 @@ class MainViewModel(
     private fun connectToFastestServer() {
         launchLoading { withContext(ioDispatcher) {
             try {
+                connectJob?.cancel()
+                connectJob = currentCoroutineContext()[Job]
+                _uiState.update { it.copy(isConnecting = true, statusText = "Updating configs...") }
+
                 ensureSubscriptionConfigured()
 
                 val existingSubs = dataSource.getSubscriptions()
@@ -327,69 +389,98 @@ class MainViewModel(
                 setupGroupTab(forceRefresh = true).join()
                 refreshSelectedGuid()
 
-                val guids = dataSource.getAllServerGuids()
-                if (guids.isEmpty()) {
+                val category = uiState.value.selectedCategory
+                val allGuids = dataSource.getAllServerGuids()
+                if (allGuids.isEmpty()) {
                     _uiState.update { it.copy(statusText = "No configs found!") }
                     return@withContext
                 }
 
-                _uiState.update { it.copy(statusText = "Testing ${guids.size} servers...") }
-
-                val results = coroutineScope {
-                    val semaphore = Semaphore(8)
-                    guids.map { guid -> async(ioDispatcher) {
-                        semaphore.withPermit {
-                            val profile = dataSource.decodeServerConfig(guid)
-                            val serverHost = profile?.server
-                            val serverPort = profile?.serverPort?.toIntOrNull()
-                            val time = if (!serverHost.isNullOrEmpty() && serverPort != null) {
-                                SpeedtestManager.socketConnectTime(serverHost, serverPort, 1000)
-                            } else { -1L }
-                            guid to if (time <= -1) Long.MAX_VALUE else time
+                // Filter servers by selected category
+                val guids = if (category == ConfigCategory.ALL) {
+                    allGuids
+                } else {
+                    allGuids.filter { guid ->
+                        val profile = dataSource.decodeServerConfig(guid)
+                        profile != null && when (category) {
+                            ConfigCategory.BPB -> profile.remarks.contains("[BPB]", ignoreCase = true)
+                            ConfigCategory.NAHAN -> profile.remarks.contains("[NAHAN]", ignoreCase = true)
+                            ConfigCategory.OTHER -> !profile.remarks.contains("[BPB]", ignoreCase = true) &&
+                                                    !profile.remarks.contains("[NAHAN]", ignoreCase = true)
+                            ConfigCategory.ALL -> true
                         }
-                    } }.awaitAll()
+                    }
                 }
 
-                val candidates = results
-                    .filter { it.second < Long.MAX_VALUE }
-                    .sortedBy { it.second }
-                    .take(5)
+                if (guids.isEmpty()) {
+                    _uiState.update { it.copy(statusText = "No ${category.label} servers found!") }
+                    return@withContext
+                }
+
+                _uiState.update { it.copy(statusText = "Testing ${guids.size} ${category.label} servers...") }
+
+                // Clear previous results and trigger Real Delay test
+                dataSource.clearAllTestDelayResults(guids)
+
+                val finishDeferred = CompletableDeferred<Unit>()
+                val eventCollector = viewModelScope.launch {
+                    dataSource.mainServiceEvent.collect { event ->
+                        if (event is MainServiceEvent.MeasureConfigFinish && event.finishedCount == "0") {
+                            finishDeferred.complete(Unit)
+                        }
+                    }
+                }
+
+                dataSource.sendMsg2TestService(
+                    TestServiceMessage(
+                        key = AppConfig.MSG_MEASURE_CONFIG_START,
+                        subscriptionId = uiState.value.selectedGroupId,
+                        serverGuids = guids
+                    )
+                )
+
+                // Wait up to 30 seconds, then check if at least one valid result exists
+                val startTime = System.currentTimeMillis()
+                while (true) {
+                    if (finishDeferred.isCompleted) break
+                    val elapsed = System.currentTimeMillis() - startTime
+                    if (elapsed >= 30_000L) {
+                        val validSoFar = guids.mapNotNull { guid ->
+                            val affiliation = dataSource.decodeAffiliationInfo(guid)
+                            val delay = affiliation?.testDelayMillis ?: 0L
+                            if (delay > 0) Pair(guid, delay) else null
+                        }
+                        if (validSoFar.isNotEmpty()) {
+                            dataSource.cancelAllPing()
+                            break
+                        }
+                    }
+                    delay(500L)
+                }
+
+                eventCollector.cancel()
+
+                // Read results and pick the server with lowest valid delay
+                val candidates = guids.mapNotNull { guid ->
+                    val affiliation = dataSource.decodeAffiliationInfo(guid)
+                    val delay = affiliation?.testDelayMillis ?: 0L
+                    if (delay > 0) Pair(guid, delay) else null
+                }.sortedBy { it.second }
 
                 if (candidates.isEmpty()) {
                     _uiState.update { it.copy(statusText = "All servers Timeout!") }
                     return@withContext
                 }
 
-                var connected = false
-                for ((index, candidate) in candidates.withIndex()) {
-                    val guid = candidate.first
-
-                    val label = if (index == 0) "Connecting..." else "Trying next fastest server..."
-                    _uiState.update { it.copy(statusText = label, selectedGuid = guid) }
-                    dataSource.setSelectServer(guid)
-                    _requestConnectAfterPick.tryEmit(Unit)
-
-                    delay(2000)
-
-                    if (!uiState.value.isRunning) continue
-
-                    testCurrentServerRealPing()
-                    val pingDelay = pollPingResult(5000)
-
-                    if (pingDelay > 0) {
-                        connected = true
-                        break
-                    }
-                }
-
-                if (!connected) {
-                    _uiState.update { it.copy(statusText = "No working server found!") }
-                }
+                val best = candidates.first()
+                _uiState.update { it.copy(statusText = "Connecting...", selectedGuid = best.first, isConnecting = false) }
+                dataSource.setSelectServer(best.first)
+                _requestConnectAfterPick.tryEmit(Unit)
 
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "ConnectFastest failed", e)
-                _uiState.update { it.copy(statusText = "Error occurred!") }
+                _uiState.update { it.copy(statusText = "Error occurred!", isConnecting = false) }
             }
         } }
     }
@@ -499,6 +590,18 @@ class MainViewModel(
         return -1L
     }
 
+    fun filterByCategory(servers: List<ServersCache>, category: ConfigCategory): List<ServersCache> {
+        return when (category) {
+            ConfigCategory.ALL -> servers
+            ConfigCategory.BPB -> servers.filter { it.profile.remarks.contains("[BPB]", ignoreCase = true) }
+            ConfigCategory.NAHAN -> servers.filter { it.profile.remarks.contains("[NAHAN]", ignoreCase = true) }
+            ConfigCategory.OTHER -> servers.filter {
+                !it.profile.remarks.contains("[BPB]", ignoreCase = true) &&
+                !it.profile.remarks.contains("[NAHAN]", ignoreCase = true)
+            }
+        }
+    }
+
     private fun onTestsFinished() {
         viewModelScope.launch(ioDispatcher) { if (dataSource.getAutoRemoveInvalidAfterTest()) { removeInvalidServerInternal() }; if (dataSource.getAutoSortAfterTest()) { sortByTestResultsInternal() }; cacheMutex.withLock { groupDataCache.clear() }; testingGroupId = null; _uiState.update { it.copy(isTesting = false, statusText = if (it.isRunning) connectedText else disconnectedText) }; reloadAllGroups(_uiState.value.groups.map { it.id }) }
     }
@@ -511,11 +614,113 @@ class MainViewModel(
 
     fun getPosition(guid: String): Int = currentServers().indexOfFirst { it.guid == guid }
     private fun consumeLocateTarget(target: LocateTarget) { _uiState.update { state -> if (state.locateTarget == target) state.copy(locateTarget = null) else state } }
-    private fun updateRunningState(running: Boolean, clearTestingText: Boolean = true) { _uiState.update { state -> state.copy(isRunning = running, statusText = if (!clearTestingText && state.isTesting) state.statusText else if (running) connectedText else disconnectedText, currentPingDelay = if (!running) -1L else state.currentPingDelay) } }
+    private fun updateRunningState(isRunning: Boolean, clearTestingText: Boolean = true) {
+        _uiState.update {
+            it.copy(
+                isRunning = isRunning,
+                statusText = if (isRunning) connectedText else disconnectedText,
+                isConnecting = false
+            )
+        }
 
-    override fun onCleared() { setupGroupJob?.cancel(); preloadJob?.cancel(); selectedGroupLoadJob?.cancel(); reloadJob?.cancel(); filterJob?.cancel(); cancelAllPing(); dataSource.close(); super.onCleared() }
-
-    class Factory(private val application: Application, private val dataSource: MainDataSource) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>): T { if (modelClass.isAssignableFrom(MainViewModel::class.java)) { return MainViewModel(application, dataSource) as T }; throw IllegalArgumentException("Unknown ViewModel class") }
+        if (isRunning) {
+            if (connectionTimerJob?.isActive != true) {
+                startConnectionTimer()
+            }
+        } else {
+            stopConnectionTimer()
+        }
     }
+    // شروع تایمر اتصال و آپدیت زمان و سرعت
+    private fun startConnectionTimer() {
+        connectionTimerJob?.cancel()
+        connectedTimestamp = System.currentTimeMillis()
+
+        val uid = Process.myUid()
+        val initialRx = TrafficStats.getUidRxBytes(uid)
+        val initialTx = TrafficStats.getUidTxBytes(uid)
+
+        lastRxBytes = if (initialRx != TrafficStats.UNSUPPORTED.toLong()) initialRx else 0L
+        lastTxBytes = if (initialTx != TrafficStats.UNSUPPORTED.toLong()) initialTx else 0L
+        lastSpeedCheckTimestamp = System.currentTimeMillis()
+
+        connectionTimerJob = viewModelScope.launch(Dispatchers.Default) {
+            while (true) {
+                val currentTime = System.currentTimeMillis()
+
+                // ۱. محاسبه زمان اتصال
+                val elapsedSeconds = (currentTime - connectedTimestamp) / 1000
+                val hours = elapsedSeconds / 3600
+                val minutes = (elapsedSeconds % 3600) / 60
+                val seconds = elapsedSeconds % 60
+                val formattedTime = String.format("%02d:%02d:%02d", hours, minutes, seconds)
+
+                // ۲. محاسبه سرعت دانلود و آپلود
+                val currentRxBytes = TrafficStats.getUidRxBytes(uid)
+                val currentTxBytes = TrafficStats.getUidTxBytes(uid)
+                val timeDiff = (currentTime - lastSpeedCheckTimestamp) / 1000.0
+
+                var downSpeed = 0L
+                var upSpeed = 0L
+
+                if (timeDiff > 0 && currentRxBytes != TrafficStats.UNSUPPORTED.toLong()) {
+                    val rxDiff = currentRxBytes - lastRxBytes
+                    val txDiff = currentTxBytes - lastTxBytes
+
+                    downSpeed = if (rxDiff > 0) (rxDiff / timeDiff).toLong() else 0L
+                    upSpeed = if (txDiff > 0) (txDiff / timeDiff).toLong() else 0L
+
+                    lastRxBytes = currentRxBytes
+                    lastTxBytes = currentTxBytes
+                    lastSpeedCheckTimestamp = currentTime
+                }
+
+                // ۳. آپدیت UI State
+                _uiState.update { currentState ->
+                    currentState.copy(
+                        connectionDurationText = formattedTime,
+                        downloadSpeedText = formatSpeed(downSpeed),
+                        uploadSpeedText = formatSpeed(upSpeed)
+                    )
+                }
+
+                delay(1000L) // هر ۱ ثانیه اجرا می‌شود
+            }
+        }
+    }
+
+    // متوقف کردن تایمر و ریست مقادیر
+    private fun stopConnectionTimer() {
+        connectionTimerJob?.cancel()
+        connectionTimerJob = null
+        lastRxBytes = 0L
+        lastTxBytes = 0L
+        _uiState.update {
+            it.copy(
+                connectionDurationText = "00:00:00",
+                downloadSpeedText = "0 B/s",
+                uploadSpeedText = "0 B/s"
+            )
+        }
+    }
+
+    // تابع کمکی فرمت‌دهی سرعت (بر حسب بایت بر ثانیه)
+    fun updateSpeed(downBytesPerSec: Long, upBytesPerSec: Long) {
+        _uiState.update { currentState ->
+            currentState.copy(
+                downloadSpeedText = formatSpeed(downBytesPerSec),
+                uploadSpeedText = formatSpeed(upBytesPerSec)
+            )
+        }
+    }
+
+    private fun formatSpeed(bytes: Long): String {
+        return when {
+            bytes < 1024 -> "$bytes B/s"
+            bytes < 1024 * 1024 -> "${bytes / 1024} KB/s"
+            else -> String.format("%.1f MB/s", bytes / (1024.0 * 1024.0))
+        }
+    }
+
+
 }

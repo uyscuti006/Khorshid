@@ -3,6 +3,13 @@ package com.v2ray.ang.ui.main
 import com.v2ray.ang.dto.GroupMapItem
 import com.v2ray.ang.dto.LocateTarget
 
+enum class ConfigCategory(val label: String) {
+    ALL("ALL"),
+    BPB("BPB"),
+    NAHAN("NAHAN"),
+    OTHER("OTHER")
+}
+
 data class MainUiState(
     val groups: List<GroupMapItem> = emptyList(),
     val selectedGroupId: String = "",
@@ -14,7 +21,15 @@ data class MainUiState(
     val confirmRemove: Boolean = false,
     val doubleColumnDisplay: Boolean = false,
     val shareQRCodeBitmap: android.graphics.Bitmap? = null,
-    val currentPingDelay: Long = -1L
+    val currentPingDelay: Long = -1L,
+    val selectedCategory: ConfigCategory = ConfigCategory.ALL,
+    val isConnecting: Boolean = false,
+    val isDarkMode: Boolean = false,
+    val hasUserToggledTheme: Boolean = false,
+    // این ۳ خط اضافه شدند:
+    val downloadSpeedText: String = "0 B/s",
+    val uploadSpeedText: String = "0 B/s",
+    val connectionDurationText: String = "00:00:00"
 )
 
 sealed interface MainAction {
@@ -51,7 +66,13 @@ sealed interface MainAction {
     data class ShareFullContent(val guid: String) : MainAction
     data object DismissQRCodeDialog : MainAction
 
+    data object CancelConnect : MainAction
+
     data class ImportBatchConfig(val configText: String) : MainAction
 
     data class LocateHandled(val target: LocateTarget) : MainAction
+
+    data class SelectCategory(val category: ConfigCategory) : MainAction
+
+    data object ToggleTheme : MainAction
 }

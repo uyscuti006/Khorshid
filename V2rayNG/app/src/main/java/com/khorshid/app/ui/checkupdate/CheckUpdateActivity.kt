@@ -1,0 +1,175 @@
+package com.v2ray.ang.ui.checkupdate
+
+import android.os.Bundle
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.v2ray.ang.BuildConfig
+import com.v2ray.ang.R
+import com.v2ray.ang.compose.AppTopBar
+import com.v2ray.ang.compose.SettingsMenuItem
+import com.v2ray.ang.compose.SettingsSwitchItem
+import com.v2ray.ang.compose.VersionInfoBlock
+import com.v2ray.ang.core.CoreNativeManager
+import com.v2ray.ang.ui.base.BaseComponentActivity
+import com.v2ray.ang.util.Utils
+
+class CheckUpdateActivity : BaseComponentActivity() {
+
+    private val viewModel: CheckUpdateViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+    }
+
+    @Composable
+    override fun ScreenContent() {
+        CheckUpdateScreen(
+            viewModel = viewModel,
+            onBackClick = { finish() }
+        )
+    }
+}
+
+@Composable
+fun CheckUpdateScreen(
+    viewModel: CheckUpdateViewModel,
+    onBackClick: () -> Unit
+) {
+    val context = LocalContext.current
+
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val checkPreRelease by viewModel.checkPreRelease.collectAsStateWithLifecycle()
+    val showUpdateDialog by viewModel.showUpdateDialog.collectAsStateWithLifecycle()
+    val updateResult by viewModel.updateResult.collectAsStateWithLifecycle()
+
+    val versionText = "v${BuildConfig.VERSION_NAME} (${CoreNativeManager.getLibVersion()})"
+
+    LaunchedEffect(Unit) {
+        viewModel.checkForUpdates()
+    }
+
+    Scaffold(
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            AppTopBar(
+                title = stringResource(R.string.update_check_for_update),
+                onBackClick = onBackClick,
+                isLoading = isLoading
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 📦 کارت تنظیمات و بررسی به‌روزرسانی
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 4.dp)
+                ) {
+                    SettingsSwitchItem(
+                        icon = painterResource(R.drawable.ic_source_code_24dp),
+                        title = stringResource(R.string.update_check_pre_release),
+                        checked = checkPreRelease,
+                        onCheckedChange = { viewModel.toggleCheckPreRelease(it) }
+                    )
+                    SettingsMenuItem(
+                        icon = painterResource(R.drawable.ic_check_update_24dp),
+                        title = stringResource(R.string.update_check_for_update),
+                        onClick = { viewModel.checkForUpdates() }
+                    )
+                }
+            }
+
+            // ℹ️ کارت نمایش نسخه برنامه‌ و هسته V2Ray
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    VersionInfoBlock(versionText = versionText)
+                }
+            }
+        }
+    }
+
+    // 🔔 دیالوگ اطلاع‌رسانی نسخه جدید
+    if (showUpdateDialog) {
+        updateResult?.let { result ->
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissUpdateDialog() },
+                title = {
+                    Text(
+                        text = stringResource(R.string.update_new_version_found, result.latestVersion ?: ""),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                },
+                text = {
+                    Text(
+                        text = result.releaseNotes ?: "",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.dismissUpdateDialog()
+                            result.downloadUrl?.let { Utils.openUri(context, it) }
+                        }
+                    ) {
+                        Text(stringResource(R.string.update_now))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
+                        Text(stringResource(android.R.string.cancel))
+                    }
+                },
+                shape = RoundedCornerShape(20.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            )
+        }
+    }
+}
