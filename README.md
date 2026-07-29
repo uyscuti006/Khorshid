@@ -34,4 +34,4 @@ Not sure which file to pick?
 | `Khorshid_x.x.x_arm64-v8a.apk` | Most modern phones (recommended) |
 | `Khorshid_x.x.x_armeabi-v7a.apk` | Older/budget devices |
 | `Khorshid_x.x.x_universal.apk` | Works on any device, larger file size |
-|
+| `Khorshid_x.x.x_x86` / `x86_64.apk` | Emulators, some tablets/Chromebooks |
