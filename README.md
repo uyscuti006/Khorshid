@@ -34,4 +34,14 @@ Latest builds are on the **[Releases](https://github.com/uyscuti006/Khorshid/rel
 | `arm64-v8a` | Most current phones |
 | `armeabi-v7a` | Older devices |
 | `universal` | Any device, larger file |
-| `x86` / `x86_64`
+| `x86` / `x86_64` | Emulators, some tablets |
+
+---
+
+## About
+
+A fork of [v2rayNG](https://github.com/2dust/v2rayNG), with a simplified UI and automatic server selection added on top.
+
+## License
+
+[GPL-3.0](LICENSE), same as v2rayNG.
