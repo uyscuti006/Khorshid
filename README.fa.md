@@ -25,7 +25,7 @@
 
 ## دانلود
 
-آخرین نسخه را از صفحه‌ی **[انتشارها](https://github.com/uyscuti006/Khorshid/releases/latest)** دریافت کن.
+آخرین نسخه را از صفحه‌ی **[Releases](https://github.com/uyscuti006/Khorshid/releases/latest)** دریافت کن.
 
 اگر نمی‌دانی کدام فایل مناسب گوشی توست:
 
