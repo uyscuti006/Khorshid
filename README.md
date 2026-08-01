@@ -34,4 +34,5 @@ Not sure which file to pick?
 | `Khorshid_x.x.x_armeabi-v7a.apk` | Older/budget devices |
 | `Khorshid_x.x.x_universal.apk` | Works on any device, larger file size |
 | `Khorshid_x.x.x_x86` / `x86_64.apk` | Emulators, some tablets/Chromebooks |
+
 This project is based on [2dust/v2rayNG](https://github.com/2dust/v2rayNG).
