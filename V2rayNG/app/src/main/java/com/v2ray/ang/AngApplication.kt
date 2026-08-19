@@ -7,6 +7,7 @@ import androidx.work.WorkManager
 import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig.ANG_PACKAGE
 import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.CipherSuitesManager
 import com.v2ray.ang.ui.compose.ThemeManager
 
 class AngApplication : Application() {
@@ -43,5 +44,8 @@ class AngApplication : Application() {
 
         // Initialize theme state from MMKV
         ThemeManager.refresh()
+
+        // Startup safety: restore any orphaned CipherSuites backups
+        CipherSuitesManager.startupSafetyCheck()
     }
 }

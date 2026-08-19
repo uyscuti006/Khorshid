@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.runtime.Composable
@@ -117,6 +118,9 @@ fun SettingsScreen(
     var proxySharing by rememberMmkvBool(AppConfig.PREF_PROXY_SHARING, false)
 
     var speedEnabled by rememberMmkvBool(AppConfig.PREF_SPEED_ENABLED, false)
+    var autoFailover by rememberMmkvBool(AppConfig.PREF_AUTO_FAILOVER_ENABLED, false)
+    var autoDisconnectVpn by rememberMmkvBool(AppConfig.PREF_AUTO_DISCONNECT_OTHER_VPN, true)
+    var killSwitch by rememberMmkvBool(AppConfig.PREF_KILL_SWITCH_ENABLED, false)
     var confirmRemove by rememberMmkvBool(AppConfig.PREF_CONFIRM_REMOVE, false)
     var doubleColumnDisplay by rememberMmkvBool(AppConfig.PREF_DOUBLE_COLUMN_DISPLAY, false)
     var groupAllDisplay by rememberMmkvBool(AppConfig.PREF_GROUP_ALL_DISPLAY, false)
@@ -169,6 +173,7 @@ fun SettingsScreen(
 
     Scaffold(
         contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
             AppTopBar(
                 title = stringResource(R.string.title_settings),
@@ -195,6 +200,24 @@ fun SettingsScreen(
                     summary = stringResource(R.string.summary_pref_speed_enabled),
                     checked = speedEnabled,
                     onCheckedChange = { speedEnabled = it }
+                )
+                SettingsSwitchItem(
+                    title = stringResource(R.string.title_pref_autofailover),
+                    summary = stringResource(R.string.summary_pref_autofailover),
+                    checked = autoFailover,
+                    onCheckedChange = { autoFailover = it }
+                )
+                SettingsSwitchItem(
+                    title = stringResource(R.string.title_pref_auto_disconnect_vpn),
+                    summary = stringResource(R.string.summary_pref_auto_disconnect_vpn),
+                    checked = autoDisconnectVpn,
+                    onCheckedChange = { autoDisconnectVpn = it }
+                )
+                SettingsSwitchItem(
+                    title = stringResource(R.string.title_pref_kill_switch),
+                    summary = stringResource(R.string.summary_pref_kill_switch),
+                    checked = killSwitch,
+                    onCheckedChange = { killSwitch = it }
                 )
                 SettingsSwitchItem(
                     title = stringResource(R.string.title_pref_confirm_remove),

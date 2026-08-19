@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -82,7 +83,8 @@ fun ConfirmDialog(
                 }
             }
         },
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(16.dp)
     )
 }
 
@@ -143,10 +145,10 @@ fun InputDialog(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
-                            cursorColor = MaterialTheme.colorScheme.secondary,
+                            cursorColor = MaterialTheme.colorScheme.primary,
                             selectionColors = TextSelectionColors(
-                                handleColor = MaterialTheme.colorScheme.secondary,
-                                backgroundColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                                handleColor = MaterialTheme.colorScheme.primary,
+                                backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
                             )
                         ),
                         modifier = Modifier.fillMaxWidth()
@@ -160,7 +162,8 @@ fun InputDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(dismissText) }
         },
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(16.dp)
     )
 }
 
@@ -184,7 +187,8 @@ fun QRCodeDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
         },
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(16.dp)
     )
 }
 
@@ -249,6 +253,7 @@ fun <T> SelectListDialog(
                 Text(stringResource(android.R.string.cancel))
             }
         },
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(16.dp)
     )
 }

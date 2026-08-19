@@ -2,34 +2,39 @@ package com.v2ray.ang.ui.main
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DrawerState
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
-import com.v2ray.ang.ui.compose.AppDivider
 import com.v2ray.ang.ui.compose.verticalScrollbar
 
 enum class MainDestination(@DrawableRes val iconRes: Int, @StringRes val labelRes: Int) {
@@ -38,6 +43,7 @@ enum class MainDestination(@DrawableRes val iconRes: Int, @StringRes val labelRe
     Routing(R.drawable.ic_routing_24dp, R.string.routing_settings_title),
     UserAssets(R.drawable.ic_file_24dp, R.string.title_user_asset_setting),
     Settings(R.drawable.ic_settings_24dp, R.string.title_settings),
+    IpScanner(R.drawable.ic_search_24dp, R.string.title_ip_scanner),
     Promotion(R.drawable.ic_promotion_24dp, R.string.title_pref_promotion),
     Logcat(R.drawable.ic_logcat_24dp, R.string.title_logcat),
     CheckUpdate(R.drawable.ic_check_update_24dp, R.string.update_check_for_update),
@@ -50,33 +56,44 @@ private val primaryDrawerItems = listOf(
     MainDestination.PerAppProxy,
     MainDestination.Routing,
     MainDestination.UserAssets,
-    MainDestination.Settings
+    MainDestination.Settings,
+    MainDestination.IpScanner
 )
 
-private val drawerItems = primaryDrawerItems + listOf(
-    MainDestination.Promotion,
+private val secondaryDrawerItems = listOf(
     MainDestination.Logcat,
     MainDestination.CheckUpdate,
-    MainDestination.BackupRestore,
-    MainDestination.About
+    MainDestination.BackupRestore
 )
 
 @Composable
-fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) -> Unit) {
+fun MainDrawerContent(
+    drawerState: DrawerState,
+    onNavigate: (MainDestination) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val drawerScrollState = rememberScrollState()
+    val versionText = remember { "v${BuildConfig.VERSION_NAME}" }
 
     ModalDrawerSheet(
         drawerState = drawerState,
-        modifier = Modifier.fillMaxWidth(0.75f),
-        drawerContainerColor = MaterialTheme.colorScheme.surface
+        modifier = modifier.fillMaxWidth(0.78f),
+        drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(
-            modifier = Modifier.verticalScroll(drawerScrollState).verticalScrollbar(drawerScrollState)
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(drawerScrollState)
+                .verticalScrollbar(drawerScrollState)
         ) {
-            Surface(
+            // هدر منوی کشویی - نام برنامه مرکز + ورژن پایین
+            Box(
                 modifier = Modifier
+                    .padding(12.dp)
                     .fillMaxWidth()
-                    .height(160.dp)
+                    .height(120.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             ) {
                 Column(
                     modifier = Modifier
@@ -87,24 +104,80 @@ fun MainDrawerContent(drawerState: DrawerState, onNavigate: (MainDestination) ->
                 ) {
                     Text(
                         text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontFamily = FontFamily(Font(R.font.montserrat_thin)),
-                            fontWeight = FontWeight.Thin
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.Bold
                         ),
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = versionText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-            drawerItems.forEachIndexed { index, item ->
-                if (index == primaryDrawerItems.size) AppDivider()
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // آیتم‌های بخش اصلی
+            primaryDrawerItems.forEach { item ->
                 NavigationDrawerItem(
-                    label = { Text(stringResource(item.labelRes)) },
+                    label = {
+                        Text(
+                            text = stringResource(item.labelRes),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    },
                     selected = false,
                     onClick = { onNavigate(item) },
-                    icon = { Icon(painterResource(item.iconRes), contentDescription = null) },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    icon = {
+                        Icon(
+                            painter = painterResource(item.iconRes),
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = NavigationDrawerItemDefaults.colors(
+                        unselectedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
                 )
             }
+
+            // آیتم‌های بخش ثانویه
+            secondaryDrawerItems.forEach { item ->
+                NavigationDrawerItem(
+                    label = {
+                        Text(
+                            text = stringResource(item.labelRes),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    },
+                    selected = false,
+                    onClick = { onNavigate(item) },
+                    icon = {
+                        Icon(
+                            painter = painterResource(item.iconRes),
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = NavigationDrawerItemDefaults.colors(
+                        unselectedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }

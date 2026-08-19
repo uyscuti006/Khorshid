@@ -98,7 +98,7 @@ fun AppTopBar(
             },
             actions = actions,
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 titleContentColor = MaterialTheme.colorScheme.onSurface,
                 navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
                 actionIconContentColor = MaterialTheme.colorScheme.onSurface
@@ -109,7 +109,7 @@ fun AppTopBar(
             enter = expandVertically(),
             exit = shrinkVertically()
         ) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = colorFabActive)
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -134,10 +134,10 @@ private fun SearchInputField(
                 unfocusedContainerColor = Color.Transparent,
                 focusedBorderColor = Color.Transparent,
                 unfocusedBorderColor = Color.Transparent,
-                cursorColor = MaterialTheme.colorScheme.secondary,
+                cursorColor = MaterialTheme.colorScheme.primary,
                 selectionColors = TextSelectionColors(
-                    handleColor = MaterialTheme.colorScheme.secondary,
-                    backgroundColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                    handleColor = MaterialTheme.colorScheme.primary,
+                    backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
                 )
             ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -198,7 +198,7 @@ fun AppListItem(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = packageName,
                 style = MaterialTheme.typography.bodySmall,
@@ -210,7 +210,7 @@ fun AppListItem(
         Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
-            colors = CheckboxDefaults.colors(checkedColor = colorFabActive)
+            colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
         )
     }
 }

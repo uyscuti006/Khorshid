@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,11 +42,17 @@ fun MainTopBar(
 ) {
     var showImportMenu by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+
     val importMenuScrollState = rememberScrollState()
     val moreMenuScrollState = rememberScrollState()
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val maxMenuHeight = LocalConfiguration.current.screenHeightDp.dp - statusBarHeight - navBarHeight - 20.dp
+
+    val configuration = LocalConfiguration.current
+    val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val navBarPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    val maxMenuHeight = remember(configuration.screenHeightDp, statusBarPadding, navBarPadding) {
+        configuration.screenHeightDp.dp - statusBarPadding - navBarPadding - 20.dp
+    }
 
     AppTopBar(
         title = stringResource(R.string.title_server),
@@ -59,29 +66,43 @@ fun MainTopBar(
         navigationIcon = {
             if (showSearch) {
                 IconButton(onClick = onSearchClose) {
-                    Icon(painterResource(R.drawable.ic_arrow_back_24dp), contentDescription = "Back")
+                    Icon(
+                        painter = painterResource(R.drawable.ic_arrow_back_24dp),
+                        contentDescription = "Back"
+                    )
                 }
             } else {
                 IconButton(onClick = onMenuClick) {
-                    Icon(painterResource(R.drawable.ic_menu_24dp), contentDescription = "Menu")
+                    Icon(
+                        painter = painterResource(R.drawable.ic_menu_24dp),
+                        contentDescription = "Menu"
+                    )
                 }
             }
         },
         actions = {
             if (!showSearch) {
                 IconButton(onClick = { onSearchToggle(true) }) {
-                    Icon(painterResource(R.drawable.ic_search_24dp), contentDescription = "filter")
+                    Icon(
+                        painter = painterResource(R.drawable.ic_search_24dp),
+                        contentDescription = stringResource(R.string.menu_item_search)
+                    )
                 }
             }
+
             Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
                 IconButton(onClick = { showImportMenu = true }) {
-                    Icon(painterResource(R.drawable.ic_add_24dp), contentDescription = "Add")
+                    Icon(
+                        painter = painterResource(R.drawable.ic_add_24dp),
+                        contentDescription = "Add"
+                    )
                 }
                 DropdownMenu(
                     expanded = showImportMenu,
                     onDismissRequest = { showImportMenu = false },
                     scrollState = importMenuScrollState,
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier
                         .heightIn(max = maxMenuHeight)
                         .verticalScrollbar(importMenuScrollState)
@@ -94,15 +115,20 @@ fun MainTopBar(
                     )
                 }
             }
+
             Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
                 IconButton(onClick = { showMenu = true }) {
-                    Icon(painterResource(R.drawable.ic_more_vert_24dp), contentDescription = "More")
+                    Icon(
+                        painter = painterResource(R.drawable.ic_more_vert_24dp),
+                        contentDescription = "More"
+                    )
                 }
                 DropdownMenu(
                     expanded = showMenu,
                     onDismissRequest = { showMenu = false },
                     scrollState = moreMenuScrollState,
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier
                         .heightIn(max = maxMenuHeight)
                         .verticalScrollbar(moreMenuScrollState)

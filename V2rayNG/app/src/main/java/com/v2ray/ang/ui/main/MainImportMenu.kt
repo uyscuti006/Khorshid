@@ -2,6 +2,7 @@ package com.v2ray.ang.ui.main
 
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.ProfileItem
@@ -59,18 +60,22 @@ internal fun serverMenuActions(
 }
 
 @Composable
-fun ImportMenuContent(onAction: (MainAction) -> Unit) = AppDropdownMenuItems(
-    items = ImportMenuAction.entries,
-    labelRes = { it.labelRes },
-    onSelected = { onAction(it.action) }
-)
+fun ImportMenuContent(onAction: (MainAction) -> Unit) {
+    AppDropdownMenuItems(
+        items = ImportMenuAction.entries,
+        labelRes = { it.labelRes },
+        onSelected = { onAction(it.action) }
+    )
+}
 
 @Composable
-fun MoreMenuContent(onSelected: (MainMoreMenuAction) -> Unit) = AppDropdownMenuItems(
-    items = MainMoreMenuAction.entries,
-    labelRes = { it.labelRes },
-    onSelected = onSelected
-)
+fun MoreMenuContent(onSelected: (MainMoreMenuAction) -> Unit) {
+    AppDropdownMenuItems(
+        items = MainMoreMenuAction.entries,
+        labelRes = { it.labelRes },
+        onSelected = onSelected
+    )
+}
 
 @Composable
 fun ShareMethodDialog(
@@ -81,10 +86,15 @@ fun ShareMethodDialog(
     onAction: (MainAction) -> Unit,
     onRemove: (String) -> Unit,
 ) {
-    val menuActions = serverMenuActions(
-        isComplexProfile = profile.configType.isComplexType(),
-        includeManagementActions = more,
-    )
+    // بهینه‌سازی: یادسپاری فیلتر لیست اکشن‌ها در حافظه جهت جلوگیری از فیلتر مجدد با هر Recomposition دیالوگ
+    val isComplex = remember(profile.configType) { profile.configType.isComplexType() }
+    val menuActions = remember(isComplex, more) {
+        serverMenuActions(
+            isComplexProfile = isComplex,
+            includeManagementActions = more
+        )
+    }
+
     SelectListDialog(
         options = menuActions,
         optionText = { stringResource(it.labelRes) },

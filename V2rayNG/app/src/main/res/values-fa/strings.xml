@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">v2rayNG</string>
+    <string name="app_name" translatable="false">Khorshid</string>
     <string name="app_widget_name">تعویض</string>
     <string name="app_tile_name">تعویض</string>
     <string name="app_tile_first_use">برای اولین استفاده از این قابلیت، لطفاً ابتدا از داخل برنامه یک سرور اضافه کنید</string>
@@ -182,6 +182,12 @@
     <string name="summary_pref_auto_remove_invalid_after_test">نتایج پینگ ممکن است همیشه دقیق نباشند؛ کانفیگ‌های حذف‌شده قابل بازیابی نیستند.</string>
     <string name="title_pref_auto_sort_after_test">مرتب‌سازی خودکار بعد از پینگ گرفتن</string>
     <string name="summary_pref_auto_sort_after_test">نتایج آزمایش ممکن است کاملاً دقیق نباشند.</string>
+
+    <string name="title_pref_autofailover">سوئیچ خودکار سرور</string>
+    <string name="summary_pref_autofailover">وقتی اتصال کند یا قطع شود، به صورت خودکار به سرور بعدی سوئیچ کنید.</string>
+    <string name="autofailover_switching">سوئیچ از %1$s به %2$s...</string>
+    <string name="autofailover_no_alt">اتصال قطع شد. سرور جایگزینی یافت نشد.</string>
+    <string name="autofailover_limit_reached">حد سوئیچ خودکار رسید (%1$d بار در %2$d دقیقه). لطفاً مجدداً متصل شوید.</string>
 
     <string name="title_mux_settings">تنظیمات Mux</string>
     <string name="title_pref_mux_enabled">فعال کردن Mux</string>

@@ -66,7 +66,7 @@ private fun <T> rememberScrollbarAlpha(
 
 @Composable
 private fun scrollbarThumbColor(config: ScrollbarConfig): Color =
-    if (config.thumbColor == Color.Unspecified) MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
+    if (config.thumbColor == Color.Unspecified) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
     else config.thumbColor
 
 private fun calculateThumb(

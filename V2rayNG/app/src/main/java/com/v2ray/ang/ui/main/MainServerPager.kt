@@ -1,21 +1,20 @@
 package com.v2ray.ang.ui.main
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -25,9 +24,12 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,7 +51,6 @@ import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.nullIfBlank
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
-import com.v2ray.ang.ui.compose.ItemDivider
 import com.v2ray.ang.ui.compose.ReorderableGridItem
 import com.v2ray.ang.ui.compose.ReorderableListItem
 import com.v2ray.ang.ui.compose.colorConfigType
@@ -83,13 +84,13 @@ fun GroupPagerPage(
     }
     val servers by serverFlow.collectAsStateWithLifecycle()
     val canReorder = groupId.isNotEmpty() && searchQuery.isEmpty()
+
     ServerListPage(
         servers = servers,
         selectedGuid = selectedGuid,
         canReorder = canReorder,
         doubleColumnDisplay = doubleColumnDisplay,
         subscriptionId = groupId,
-        confirmRemove = confirmRemove,
         groupId = groupId,
         lazyListStates = lazyListStates,
         lazyGridStates = lazyGridStates,
@@ -110,7 +111,6 @@ private fun ServerListPage(
     canReorder: Boolean,
     doubleColumnDisplay: Boolean,
     subscriptionId: String,
-    confirmRemove: Boolean,
     groupId: String,
     lazyListStates: MutableMap<String, LazyListState>,
     lazyGridStates: MutableMap<String, LazyGridState>,
@@ -122,6 +122,8 @@ private fun ServerListPage(
     onMoveServer: (Int, Int) -> Unit,
     contentPadding: PaddingValues
 ) {
+    val spacing = 8.dp
+
     if (doubleColumnDisplay) {
         val gridState = remember(groupId) {
             lazyGridStates.getOrPut(groupId) { LazyGridState() }
@@ -135,14 +137,21 @@ private fun ServerListPage(
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             state = gridState,
+            horizontalArrangement = Arrangement.spacedBy(spacing),
+            verticalArrangement = Arrangement.spacedBy(spacing),
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScrollbar(gridState),
-            contentPadding = contentPadding
+            contentPadding = PaddingValues(
+                top = contentPadding.calculateTopPadding() + spacing,
+                bottom = contentPadding.calculateBottomPadding() + spacing,
+                start = 12.dp,
+                end = 12.dp
+            )
         ) {
             itemsIndexed(items = servers, key = { _, item -> item.guid }) { _, serverCache ->
                 val content: @Composable () -> Unit = {
-                    ServerItemColumn(
+                    ServerCardItem(
                         serverCache = serverCache,
                         selectedGuid = selectedGuid,
                         subscriptionId = subscriptionId,
@@ -181,10 +190,16 @@ private fun ServerListPage(
 
         LazyColumn(
             state = listState,
+            verticalArrangement = Arrangement.spacedBy(spacing),
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScrollbar(listState),
-            contentPadding = contentPadding
+            contentPadding = PaddingValues(
+                top = contentPadding.calculateTopPadding() + spacing,
+                bottom = contentPadding.calculateBottomPadding() + spacing,
+                start = 12.dp,
+                end = 12.dp
+            )
         ) {
             itemsIndexed(items = servers, key = { _, item -> item.guid }) { _, serverCache ->
                 if (canReorder && reorderableState != null) {
@@ -196,10 +211,11 @@ private fun ServerListPage(
                             scope = this,
                             isDragging = isDragging
                         ) {
-                            ServerItemRow(
+                            ServerCardItem(
                                 serverCache = serverCache,
                                 selectedGuid = selectedGuid,
                                 subscriptionId = subscriptionId,
+                                doubleColumnDisplay = false,
                                 onSelectServer = onSelectServer,
                                 onEditServer = onEditServer,
                                 onShareServer = onShareServer,
@@ -207,20 +223,19 @@ private fun ServerListPage(
                                 onRemoveServer = onRemoveServer
                             )
                         }
-                        ItemDivider()
                     }
                 } else {
-                    ServerItemRow(
+                    ServerCardItem(
                         serverCache = serverCache,
                         selectedGuid = selectedGuid,
                         subscriptionId = subscriptionId,
+                        doubleColumnDisplay = false,
                         onSelectServer = onSelectServer,
                         onEditServer = onEditServer,
                         onShareServer = onShareServer,
                         onMoreServer = onMoreServer,
                         onRemoveServer = onRemoveServer
                     )
-                    ItemDivider()
                 }
             }
         }
@@ -228,10 +243,11 @@ private fun ServerListPage(
 }
 
 @Composable
-private fun ServerItemRow(
+private fun ServerCardItem(
     serverCache: ServersCache,
     selectedGuid: String?,
     subscriptionId: String,
+    doubleColumnDisplay: Boolean,
     onSelectServer: (String) -> Unit,
     onEditServer: (String, ProfileItem) -> Unit,
     onShareServer: (String, ProfileItem) -> Unit,
@@ -239,144 +255,138 @@ private fun ServerItemRow(
     onRemoveServer: (String) -> Unit
 ) {
     val profile = serverCache.profile
-    val subRemarks = if (subscriptionId.isEmpty()) {
-        MmkvManager.decodeSubscription(profile.subscriptionId)?.remarks?.firstOrNull()
-            ?.toString() ?: ""
-    } else ""
+    val isSelected = serverCache.guid == selectedGuid
 
-    ServerListItem(
-        remarks = profile.remarks,
-        statistics = profile.description.nullIfBlank()
-            ?: AngConfigManager.generateDescription(profile),
-        typeDescription = getProtocolDescription(profile),
-        testResult = serverCache.testDelayString,
-        testDelayMillis = serverCache.testDelayMillis,
-        isSelected = serverCache.guid == selectedGuid,
-        subscriptionRemarks = subRemarks,
-        doubleColumnDisplay = false,
-        onClick = { onSelectServer(serverCache.guid) },
-        onShare = { onShareServer(serverCache.guid, profile) },
-        onEdit = { onEditServer(serverCache.guid, profile) },
-        onRemove = { onRemoveServer(serverCache.guid) },
-        onMore = { onMoreServer(serverCache.guid, profile) }
+    val subRemarks = remember(profile.subscriptionId, subscriptionId) {
+        if (subscriptionId.isEmpty()) {
+            MmkvManager.decodeSubscription(profile.subscriptionId)?.remarks?.firstOrNull()?.toString().orEmpty()
+        } else ""
+    }
+
+    val statistics = remember(profile) {
+        profile.description.nullIfBlank() ?: AngConfigManager.generateDescription(profile)
+    }
+
+    val typeDescription = remember(profile) {
+        getProtocolDescription(profile)
+    }
+
+    // هماهنگ‌سازی با رنگ‌بندی کانتینری متریال ۳ صفحه تنظیمات
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        animationSpec = tween(300),
+        label = "borderColor"
     )
-}
 
-@Composable
-private fun ServerItemColumn(
-    serverCache: ServersCache,
-    selectedGuid: String?,
-    subscriptionId: String,
-    doubleColumnDisplay: Boolean,
-    onSelectServer: (String) -> Unit,
-    onEditServer: (String, ProfileItem) -> Unit,
-    onShareServer: (String, ProfileItem) -> Unit,
-    onMoreServer: (String, ProfileItem) -> Unit,
-    onRemoveServer: (String) -> Unit
-) {
-    val profile = serverCache.profile
-    val subRemarks = if (subscriptionId.isEmpty()) {
-        MmkvManager.decodeSubscription(profile.subscriptionId)?.remarks?.firstOrNull()?.toString() ?: ""
-    } else ""
-    Column {
-        ServerListItem(
-            remarks = profile.remarks,
-            statistics = profile.description.nullIfBlank() ?: AngConfigManager.generateDescription(profile),
-            typeDescription = getProtocolDescription(profile),
-            testResult = serverCache.testDelayString,
-            testDelayMillis = serverCache.testDelayMillis,
-            isSelected = serverCache.guid == selectedGuid,
-            subscriptionRemarks = subRemarks,
-            doubleColumnDisplay = doubleColumnDisplay,
-            onClick = { onSelectServer(serverCache.guid) },
-            onEdit = { onEditServer(serverCache.guid, profile) },
-            onShare = { onShareServer(serverCache.guid, profile) },
-            onRemove = { onRemoveServer(serverCache.guid) },
-            onMore = { onMoreServer(serverCache.guid, profile) }
-        )
-        ItemDivider()
-    }
-}
+    val containerColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainer
+        },
+        animationSpec = tween(300),
+        label = "containerColor"
+    )
 
-@Composable
-fun ServerListItem(
-    remarks: String,
-    statistics: String,
-    typeDescription: String,
-    testResult: String,
-    testDelayMillis: Long,
-    isSelected: Boolean,
-    subscriptionRemarks: String,
-    doubleColumnDisplay: Boolean,
-    onClick: () -> Unit,
-    onEdit: () -> Unit,
-    onShare: () -> Unit,
-    onRemove: () -> Unit,
-    onMore: () -> Unit,
-    modifier: Modifier = Modifier,
-    dragModifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .clickable(onClick = onClick)
-            .then(dragModifier)
+    OutlinedCard(
+        onClick = { onSelectServer(serverCache.guid) },
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor),
+        colors = CardDefaults.outlinedCardColors(containerColor = containerColor),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
-            Modifier
-                .width(10.dp)
-                .fillMaxHeight()
-        ) {
-            if (isSelected) {
-                Row {
-                    Spacer(Modifier.width(6.dp))
-                    Box(
-                        Modifier
-                            .width(4.dp)
-                            .fillMaxHeight()
-                            .padding(vertical = 10.dp)
-                            .background(MaterialTheme.colorScheme.primary)
-                    )
-                }
-            }
-        }
-
         Column(
-            Modifier
-                .weight(1f)
-                .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+            modifier = Modifier.padding(12.dp)
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(remarks, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Paragraph), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = profile.remarks,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                        lineBreak = LineBreak.Paragraph
+                    ),
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
                 if (doubleColumnDisplay) {
-                    IconButton(onClick = onMore, Modifier.size(36.dp)) {
-                        Icon(painterResource(R.drawable.ic_more_vert_24dp), null, Modifier.size(24.dp))
+                    IconButton(onClick = { onMoreServer(serverCache.guid, profile) }, modifier = Modifier.size(32.dp)) {
+                        Icon(painterResource(R.drawable.ic_more_vert_24dp), null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
-                    IconButton(onClick = onShare, Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_share_24dp), null, Modifier.size(24.dp)) }
-                    IconButton(onClick = onEdit, Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_edit_24dp), null, Modifier.size(24.dp)) }
-                    IconButton(onClick = onRemove, Modifier.size(36.dp)) { Icon(painterResource(R.drawable.ic_delete_24dp), null, Modifier.size(24.dp)) }
-                }
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                if (subscriptionRemarks.isNotBlank()) {
-                    Box(
-                        Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)), Alignment.Center
-                    ) {
-                        Text(subscriptionRemarks.take(1).uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        IconButton(onClick = { onShareServer(serverCache.guid, profile) }, modifier = Modifier.size(32.dp)) {
+                            Icon(painterResource(R.drawable.ic_share_24dp), null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { onEditServer(serverCache.guid, profile) }, modifier = Modifier.size(32.dp)) {
+                            Icon(painterResource(R.drawable.ic_edit_24dp), null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { onRemoveServer(serverCache.guid) }, modifier = Modifier.size(32.dp)) {
+                            Icon(painterResource(R.drawable.ic_delete_24dp), null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
-                Text(statistics, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+
             Spacer(modifier = Modifier.height(6.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(typeDescription, style = MaterialTheme.typography.bodySmall, color = colorConfigType, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(testResult, style = MaterialTheme.typography.bodySmall, color = if (testDelayMillis < 0L) colorPingRed else colorPing, maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (subRemarks.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 6.dp)
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = subRemarks.take(1).uppercase(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+                Text(
+                    text = statistics,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = typeDescription,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colorConfigType,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = serverCache.testDelayString,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = if (serverCache.testDelayMillis < 0L) colorPingRed else colorPing,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

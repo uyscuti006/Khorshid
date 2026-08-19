@@ -220,7 +220,6 @@ fun ProxyChainScreen(
     }
 
     Scaffold(
-        contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
         topBar = {
             AppTopBar(
                 title = EConfigType.PROXYCHAIN.toString(),

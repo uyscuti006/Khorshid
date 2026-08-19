@@ -10,11 +10,11 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.v2ray.ang"
+        applicationId = "com.khorshid.vpn"
         minSdk = 24
         targetSdk = 37
-        versionCode = 742
-        versionName = "2.3.2"
+        versionCode = 3
+        versionName = "1.1.0"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
@@ -151,6 +151,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons)  // Icons for snackbar
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.coil.compose)

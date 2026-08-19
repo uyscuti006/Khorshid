@@ -86,6 +86,21 @@ object AppConfig {
     const val PREF_AUTO_TEST_AFTER_UPDATE_SUBSCRIPTION = "pref_auto_test_after_update_subscription"
     const val PREF_AUTO_REMOVE_INVALID_AFTER_TEST = "pref_auto_remove_invalid_after_test"
     const val PREF_AUTO_SORT_AFTER_TEST = "pref_auto_sort_after_test"
+
+    // Auto-failover settings
+    const val PREF_AUTO_FAILOVER_ENABLED = "pref_autofailover_enabled"
+    const val PREF_FAILOVER_INTERVAL_MS = "pref_failover_interval_ms"
+    const val PREF_FAILOVER_MAX = "pref_failover_max"
+    const val PREF_FAILOVER_BLACKLIST_MS = "pref_failover_blacklist_ms"
+
+    // Auto-disconnect other VPN
+    const val PREF_AUTO_DISCONNECT_OTHER_VPN = "pref_auto_disconnect_other_vpn"
+
+    // Kill Switch
+    const val PREF_KILL_SWITCH_ENABLED = "pref_kill_switch_enabled"
+    const val PREF_KILL_SWITCH_RECONNECT_MS = "pref_kill_switch_reconnect_ms"
+    const val PREF_KILL_SWITCH_MAX_RETRIES = "pref_kill_switch_max_retries"
+
     const val PREF_REAL_PING_CONCURRENCY = "pref_real_ping_concurrency"
 
     /** Cache keys. */
@@ -187,6 +202,9 @@ object AppConfig {
 
     const val MSG_SUB_UPDATE_START = 8
     const val MSG_SUB_UPDATE_CANCEL = 81
+
+    /** Action constants for intent-based navigation */
+    const val ACTION_CONNECT_FASTEST = "com.v2ray.ang.ACTION_CONNECT_FASTEST"
 
     /** Notification channel IDs and names. */
     // Use a new ID because Android does not let an app raise an existing channel's importance.

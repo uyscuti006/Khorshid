@@ -237,7 +237,6 @@ fun ServerGroupScreen(
     val supportsObservatory = BalancerStrategyType.from(selectedType).supportsObservatory
 
     Scaffold(
-        contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
         topBar = {
             AppTopBar(
                 title = EConfigType.POLICYGROUP.toString(),

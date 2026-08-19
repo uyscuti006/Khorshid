@@ -1,5 +1,7 @@
 package com.v2ray.ang.ui.compose
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,10 +24,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.v2ray.ang.R
@@ -34,11 +36,11 @@ import com.v2ray.ang.R
 fun PreferenceGroupHeader(title: String, modifier: Modifier = Modifier) {
     Text(
         text = title,
-        style = MaterialTheme.typography.titleSmall,
-        color = colorFabActive,
+        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)
     )
 }
 
@@ -49,6 +51,12 @@ fun CollapsiblePreferenceGroupHeader(
     onExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 200),
+        label = "expandRotation"
+    )
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -58,17 +66,17 @@ fun CollapsiblePreferenceGroupHeader(
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleSmall,
-            color = colorFabActive,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f)
         )
         Icon(
             painter = painterResource(R.drawable.ic_expand_more_24dp),
             contentDescription = null,
-            tint = colorFabActive,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .size(24.dp)
-                .rotate(if (expanded) 180f else 0f)
+                .rotate(rotation)
         )
     }
 }
@@ -136,7 +144,7 @@ fun SettingsEditItem(
 ) {
     var showDialog by remember { mutableStateOf(false) }
     val description = if (isPassword) {
-        if (value.isEmpty()) null else "******"
+        if (value.isEmpty()) null else "•".repeat(6)
     } else {
         value.ifEmpty { null }
     }
@@ -256,10 +264,11 @@ fun SettingsSwitchItem(
             Switch(
                 checked = checked,
                 onCheckedChange = if (enabled) onCheckedChange else null,
-                modifier = Modifier.scale(0.8f),
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onSecondary,
-                    checkedTrackColor = MaterialTheme.colorScheme.secondary
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 ),
                 enabled = enabled
             )

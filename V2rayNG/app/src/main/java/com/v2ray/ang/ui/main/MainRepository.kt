@@ -116,6 +116,12 @@ class MainRepository(
     override fun isGroupAllDisplayEnabled(): Boolean =
         MmkvManager.decodeSettingsBool(AppConfig.PREF_GROUP_ALL_DISPLAY)
 
+    override fun getAutoRemoveInvalidAfterTest(): Boolean =
+        MmkvManager.decodeSettingsBool(AppConfig.PREF_AUTO_REMOVE_INVALID_AFTER_TEST, false)
+
+    override fun getAutoSortAfterTest(): Boolean =
+        MmkvManager.decodeSettingsBool(AppConfig.PREF_AUTO_SORT_AFTER_TEST, false)
+
     override fun getString(resId: Int): String = app.getString(resId)
 
     override fun getString(resId: Int, vararg formatArgs: Any): String = app.getString(resId, *formatArgs)
@@ -143,6 +149,8 @@ class MainRepository(
         } else {
             MmkvManager.decodeServerList(groupId)
         }
+
+    override fun getAllServerGuids(): List<String> = MmkvManager.decodeAllServerList()
 
     override fun decodeServerConfig(guid: String): ProfileItem? =
         MmkvManager.decodeServerConfig(guid)

@@ -9,6 +9,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
@@ -49,6 +53,7 @@ import com.v2ray.ang.ui.userasset.UserAssetActivity
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -95,32 +100,102 @@ class MainActivity : HelperBaseComponentActivity() {
         mainViewModel.onAction(MainAction.Initialize)
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
+
+        // Collect connect request from ViewModel (triggers VPN start after fastest server is picked)
+        lifecycleScope.launch {
+            mainViewModel.connectRequest.collect {
+                handleFabAction()
+            }
+        }
+
+        // Collect restart connect request
+        lifecycleScope.launch {
+            mainViewModel.restartConnectRequest.collect {
+                if (mainViewModel.uiState.value.isRunning) {
+                    if (com.v2ray.ang.handler.KillSwitchManager.isEnabled()) {
+                        // Kill Switch active: reload core on same tun (no tun closure)
+                        com.v2ray.ang.core.CoreServiceManager.reloadCore()
+                    } else {
+                        // Normal: stop service, wait, then reconnect
+                        LauncherManager.stopService(this@MainActivity)
+                        delay(500)
+                    }
+                }
+                mainViewModel.onAction(MainAction.ConnectFastest)
+            }
+        }
+
+        // Collect disconnect request (for CipherSuites toggle disable while connected)
+        lifecycleScope.launch {
+            mainViewModel.disconnectRequest.collect {
+                LauncherManager.stopService(this@MainActivity)
+            }
+        }
+
+        handleIntentAction(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntentAction(intent)
+    }
+
+    private fun handleIntentAction(intent: Intent?) {
+        if (intent?.action == AppConfig.ACTION_CONNECT_FASTEST) {
+            mainViewModel.onAction(MainAction.ConnectFastest)
+        }
     }
 
     @Composable
     override fun ScreenContent() {
-        BackHandler { moveTaskToBack(false) }
-        MainScreen(
-            mainViewModel = mainViewModel,
-            onAction = { action ->
-                when (action) {
-                    MainAction.ToggleService -> handleFabAction()
-                    MainAction.TestCurrentServer -> handleLayoutTestClick()
-                    MainAction.ImportQRcode -> importQRcode()
-                    MainAction.ImportClipboard -> importClipboard()
-                    MainAction.ImportConfigLocal -> importConfigLocal()
-                    is MainAction.ImportManually -> importManually(action.type)
-                    MainAction.RestartService -> restartV2Ray()
-                    MainAction.LocateSelectedServer -> mainViewModel.triggerLocateSelectedServer()
-                    is MainAction.SelectServer -> setSelectServer(action.guid)
-                    is MainAction.EditServer -> editServer(action.guid, action.profile)
-                    is MainAction.ShareClipboard -> shareToClipboard(action.guid)
-                    is MainAction.ShareFullContent -> shareFullContentAsync(action.guid)
-                    else -> mainViewModel.onAction(action)
-                }
-            },
-            onNavigate = { route -> navigateTo(route) },
-        )
+        var isAdvancedMode by remember { mutableStateOf(false) }
+
+        if (!isAdvancedMode) {
+            // Simple mode (default)
+            BackHandler { moveTaskToBack(false) }
+            SimpleMainScreen(
+                mainViewModel = mainViewModel,
+                onAction = { action ->
+                    when (action) {
+                        MainAction.ToggleService -> handleFabAction()
+                        MainAction.TestCurrentServer -> handleLayoutTestClick()
+                        MainAction.ConnectFastest -> {
+                            mainViewModel.onAction(MainAction.ConnectFastest)
+                        }
+                        MainAction.CancelConnect -> {
+                            mainViewModel.onAction(MainAction.CancelConnect)
+                        }
+                        else -> mainViewModel.onAction(action)
+                    }
+                },
+                onOpenAdvanced = { isAdvancedMode = true }
+            )
+        } else {
+            // Advanced mode
+            BackHandler { isAdvancedMode = false }
+            MainScreen(
+                mainViewModel = mainViewModel,
+                onAction = { action ->
+                    when (action) {
+                        MainAction.ToggleService -> handleFabAction()
+                        MainAction.TestCurrentServer -> handleLayoutTestClick()
+                        MainAction.ImportQRcode -> importQRcode()
+                        MainAction.ImportClipboard -> importClipboard()
+                        MainAction.ImportConfigLocal -> importConfigLocal()
+                        is MainAction.ImportManually -> importManually(action.type)
+                        MainAction.RestartService -> restartV2Ray()
+                        MainAction.LocateSelectedServer -> mainViewModel.triggerLocateSelectedServer()
+                        is MainAction.SelectServer -> setSelectServer(action.guid)
+                        is MainAction.EditServer -> editServer(action.guid, action.profile)
+                        is MainAction.ShareClipboard -> shareToClipboard(action.guid)
+                        is MainAction.ShareFullContent -> shareFullContentAsync(action.guid)
+                        else -> mainViewModel.onAction(action)
+                    }
+                },
+                onNavigate = { route -> navigateTo(route) },
+            )
+        }
     }
 
     private fun shareToClipboard(guid: String): Boolean =
@@ -143,6 +218,7 @@ class MainActivity : HelperBaseComponentActivity() {
             MainDestination.Routing -> Intent(this, RoutingSettingActivity::class.java)
             MainDestination.UserAssets -> Intent(this, UserAssetActivity::class.java)
             MainDestination.Settings -> Intent(this, SettingsActivity::class.java)
+            MainDestination.IpScanner -> Intent(this, com.v2ray.ang.ui.ipscanner.IpScannerActivity::class.java)
             MainDestination.Logcat -> Intent(this, LogcatActivity::class.java)
             MainDestination.CheckUpdate -> Intent(this, CheckUpdateActivity::class.java)
             MainDestination.BackupRestore -> Intent(this, BackupActivity::class.java)
@@ -282,6 +358,10 @@ class MainActivity : HelperBaseComponentActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BUTTON_B) {
             moveTaskToBack(false)
+            return true
+        }
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            mainViewModel.onAction(MainAction.ConnectFastest)
             return true
         }
         return super.onKeyDown(keyCode, event)

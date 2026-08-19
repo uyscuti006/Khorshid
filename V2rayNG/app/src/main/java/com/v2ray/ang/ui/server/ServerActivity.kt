@@ -341,7 +341,6 @@ fun ServerScreen(
     )
 
     Scaffold(
-        contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
         topBar = {
             AppTopBar(
                 title = configType.toString(),

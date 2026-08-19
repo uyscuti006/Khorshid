@@ -1,16 +1,26 @@
 package com.v2ray.ang.ui.compose
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.Icon
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -24,6 +34,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -184,6 +197,20 @@ fun AppSnackbarHost(
                 ToastType.INFO -> toastInfoBg
             }
 
+            val icon: ImageVector? = when (type) {
+                ToastType.SUCCESS -> Icons.Default.Check
+                ToastType.ERROR -> Icons.Default.Close
+                ToastType.INFO -> Icons.Default.Info
+                ToastType.NORMAL -> null
+            }
+
+            val iconBgColor = when (type) {
+                ToastType.SUCCESS -> Color(0xFF388E3C)
+                ToastType.ERROR -> Color(0xFFD50000)
+                ToastType.INFO -> Color(0xFF1A73E8)
+                ToastType.NORMAL -> Color.Transparent
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -206,6 +233,23 @@ fun AppSnackbarHost(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        if (icon != null) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(toastIconCircleBg),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
                         Text(
                             text = data.visuals.message,
                             color = toastTextColor,

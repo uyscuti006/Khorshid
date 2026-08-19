@@ -54,12 +54,12 @@ fun FormTextField(
             enabled = enabled,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                cursorColor = MaterialTheme.colorScheme.secondary,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                cursorColor = MaterialTheme.colorScheme.primary,
                 selectionColors = TextSelectionColors(
-                    handleColor = MaterialTheme.colorScheme.secondary,
-                    backgroundColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                    handleColor = MaterialTheme.colorScheme.primary,
+                    backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
                 )
             ),
             modifier = Modifier.fillMaxWidth()
@@ -108,10 +108,10 @@ fun FormDropdownField(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
-                cursorColor = MaterialTheme.colorScheme.secondary,
+                cursorColor = MaterialTheme.colorScheme.primary,
                 selectionColors = TextSelectionColors(
-                    handleColor = MaterialTheme.colorScheme.secondary,
-                    backgroundColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                    handleColor = MaterialTheme.colorScheme.primary,
+                    backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
                 )
             ),
             modifier = Modifier
@@ -131,7 +131,7 @@ fun FormDropdownField(
             onDismissRequest = { expanded = false },
             modifier = Modifier.verticalScrollbar(menuScrollState),
             scrollState = menuScrollState,
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
             options.forEach { option ->
                 DropdownMenuItem(

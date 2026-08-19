@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">v2rayNG</string>
-    <string name="app_widget_name">Switch</string>
-    <string name="app_tile_name">Switch</string>
+    <string name="app_name" translatable="false">Khorshid</string>
+    <string name="app_widget_name">Khorshid</string>
+    <string name="app_tile_name">Khorshid</string>
     <string name="app_tile_first_use">First use of this feature, please use the app to add server</string>
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
@@ -182,6 +182,25 @@
     <string name="summary_pref_auto_remove_invalid_after_test">Test results may not be accurate; deleted config cannot be recovered.</string>
     <string name="title_pref_auto_sort_after_test">Auto sort after testing</string>
     <string name="summary_pref_auto_sort_after_test">Test results may not be accurate;</string>
+
+    <string name="title_pref_autofailover">Auto-failover</string>
+    <string name="summary_pref_autofailover">Automatically switches to another server when the connection becomes slow or drops.</string>
+    <string name="autofailover_switching">Switching from %1$s to %2$s…</string>
+    <string name="autofailover_no_alt">Connection lost. No alternative server found.</string>
+    <string name="autofailover_limit_reached">Auto-failover limit reached (%1$d switches in %2$d min). Please reconnect manually.</string>
+
+    <string name="title_pref_auto_disconnect_vpn">Auto-disconnect other VPNs</string>
+    <string name="summary_pref_auto_disconnect_vpn">Automatically disconnect other VPN apps before connecting.</string>
+
+    <string name="title_pref_kill_switch">Kill Switch</string>
+    <string name="summary_pref_kill_switch">Block all internet traffic if VPN disconnects unexpectedly.</string>
+    <string name="kill_switch_active">⚠ Internet blocked — VPN disconnected. Tap to retry or disable Kill Switch.</string>
+    <string name="kill_switch_retry">Retrying VPN connection…</string>
+    <string name="kill_switch_failed">Connection failed after %1$d retries. Disable Kill Switch to restore internet.</string>
+    <string name="kill_switch_disable_confirm">Kill Switch is active. Disconnecting will restore internet access. Continue?</string>
+    <string name="kill_switch_reboot_hint">Kill Switch was active before reboot. Enable \'Block connections without VPN\' in Android settings for full protection.</string>
+
+    <string name="title_ip_scanner">IP Scanner</string>
 
     <string name="title_mux_settings">Mux Settings</string>
     <string name="title_pref_mux_enabled">Enable Mux</string>

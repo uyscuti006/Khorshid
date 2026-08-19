@@ -17,6 +17,7 @@ import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.contracts.ServiceControl
 import com.v2ray.ang.contracts.Tun2SocksControl
 import com.v2ray.ang.core.CoreServiceManager
+import com.v2ray.ang.handler.KillSwitchManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.NotificationManager
 import com.v2ray.ang.handler.SettingsManager
@@ -31,6 +32,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class CoreVpnService : VpnService(), ServiceControl {
     private lateinit var mInterface: ParcelFileDescriptor
     private var isRunning = false
+    @Volatile var isBlockingMode = false
+        private set
     private var tun2SocksService: Tun2SocksControl? = null
     private val isStartingLock = AtomicBoolean(false)
 
@@ -126,6 +129,41 @@ class CoreVpnService : VpnService(), ServiceControl {
 
     override fun setUnderlyingNetworks(networks: Array<Network>?): Boolean {
         return super<VpnService>.setUnderlyingNetworks(networks)
+    }
+
+    // ── Kill Switch: Blocking Mode ──────────────────────────────────────
+    // When Kill Switch is active and VPN drops, we stop the core but keep
+    // the tun interface open. This blocks all traffic (no fallback to
+    // normal network) because the system still thinks VPN is active.
+
+    /**
+     * Enter blocking mode: stop the core but keep tun interface open.
+     * All traffic goes through tun but nothing is forwarded → everything blocked.
+     */
+    fun enterBlockingMode() {
+        if (!isRunning) return
+        isBlockingMode = true
+        LogUtil.i(AppConfig.TAG, "VPN: Entering blocking mode — tun interface kept open")
+
+        // Stop tun2socks (the forwarder) but NOT the VPN interface
+        tun2SocksService?.stopTun2Socks()
+        tun2SocksService = null
+
+        // Stop the core loop (V2Ray/Xray) — this stops forwarding packets
+        CoreServiceManager.stopCoreLoop()
+
+        // Keep isRunning = true so the service doesn't call stopSelf()
+        // The tun interface (mInterface) stays open → system thinks VPN is active
+    }
+
+    /**
+     * Exit blocking mode: fully stop the service and close tun interface.
+     */
+    fun exitBlockingMode() {
+        if (!isBlockingMode) return
+        isBlockingMode = false
+        LogUtil.i(AppConfig.TAG, "VPN: Exiting blocking mode")
+        stopAllService(true)
     }
 
     override fun attachBaseContext(newBase: Context?) {
@@ -319,13 +357,31 @@ class CoreVpnService : VpnService(), ServiceControl {
         tun2SocksService?.startTun2Socks()
     }
 
+    /**
+     * Stop all service components.
+     *
+     * @param isForced true = user-initiated stop (always fully disconnect)
+     *                 false = system/core-initiated stop (check Kill Switch first)
+     *
+     * Kill Switch behavior:
+     * - If Kill Switch is ON and stop is NOT user-initiated (isForced=false):
+     *   Enter blocking mode (stop core but keep tun open → blocks all traffic)
+     * - If Kill Switch is ON but user explicitly clicks Disconnect (isForced=true):
+     *   Full stop → tun closed → internet restored (user chose to disable Kill Switch)
+     */
     private fun stopAllService(isForced: Boolean = true) {
-//        val configName = defaultDPreference.getPrefString(PREF_CURR_CONFIG_GUID, "")
-//        val emptyInfo = VpnNetworkInfo()
-//        val info = loadVpnNetworkInfo(configName, emptyInfo)!! + (lastNetworkInfo ?: emptyInfo)
-//        saveVpnNetworkInfo(configName, info)
+        // Kill Switch: if stop is NOT user-initiated and Kill Switch is active,
+        // enter blocking mode instead of fully closing the tun interface.
+        // This keeps the system thinking VPN is active → blocks ALL traffic including DNS.
+        if (!isForced && KillSwitchManager.isEnabled() && isRunning) {
+            LogUtil.i(AppConfig.TAG, "VPN: Kill Switch active — entering blocking mode (tun kept open)")
+            enterBlockingMode()
+            return
+        }
+
         unlockStart()
         isRunning = false
+        isBlockingMode = false
 
         tun2SocksService?.stopTun2Socks()
         tun2SocksService = null
@@ -335,16 +391,8 @@ class CoreVpnService : VpnService(), ServiceControl {
         CoreServiceManager.stopCoreLoop()
 
         if (isForced) {
-            //stopSelf has to be called ahead of mInterface.close(). otherwise v2ray core cannot be stooped
-            //It's strage but true.
-            //This can be verified by putting stopself() behind and call stopLoop and startLoop
-            //in a row for several times. You will find that later created v2ray core report port in use
-            //which means the first v2ray core somehow failed to stop and release the port.
             stopSelf()
 
-            // Add a small delay to allow the async core stop operation to complete
-            // before closing the VPN interface, preventing a race condition that can
-            // leave the VPN icon in the status bar after stopping the service.
             try {
                 Thread.sleep(100)
             } catch (e: InterruptedException) {

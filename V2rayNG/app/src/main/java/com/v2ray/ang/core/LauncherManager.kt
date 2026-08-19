@@ -90,9 +90,8 @@ object LauncherManager {
 
         if (MmkvManager.decodeSettingsBool(AppConfig.PREF_PROXY_SHARING)) {
             context.toast(R.string.toast_warning_pref_proxysharing_short)
-        } else {
-            context.toast(R.string.toast_services_start)
         }
+        // Toast "Start Services" removed - UI shows status via statusText
 
         val isRootMode = SettingsManager.isRootMode()
         if (isRootMode && !RootManager.isRootAvailable()) {

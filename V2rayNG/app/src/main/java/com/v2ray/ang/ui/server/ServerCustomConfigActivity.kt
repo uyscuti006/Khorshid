@@ -305,7 +305,6 @@ fun ServerCustomConfigScreen(
     }
 
     Scaffold(
-        contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
         topBar = {
             AppTopBar(
                 title = EConfigType.CUSTOM.toString(),

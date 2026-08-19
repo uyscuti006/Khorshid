@@ -21,6 +21,8 @@ interface MainDataSource : Closeable {
     fun getConfirmRemove(): Boolean
     fun getDoubleColumnDisplay(): Boolean
     fun isGroupAllDisplayEnabled(): Boolean
+    fun getAutoRemoveInvalidAfterTest(): Boolean
+    fun getAutoSortAfterTest(): Boolean
 
     fun getString(resId: Int): String
     fun getString(resId: Int, vararg formatArgs: Any): String
@@ -29,6 +31,7 @@ interface MainDataSource : Closeable {
     fun getSubscriptionItem(id: String): SubscriptionItem?
 
     fun getServerGuidList(groupId: String): List<String>
+    fun getAllServerGuids(): List<String>
     fun decodeServerConfig(guid: String): ProfileItem?
     fun decodeAffiliationInfo(guid: String): ServerAffiliationInfo?
 

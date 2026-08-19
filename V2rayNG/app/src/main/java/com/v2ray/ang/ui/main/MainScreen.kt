@@ -1,5 +1,7 @@
 package com.v2ray.ang.ui.main
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,9 +11,11 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,9 +28,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.ui.compose.LocalDarkTheme
 import com.v2ray.ang.ui.compose.QRCodeDialog
@@ -53,6 +59,7 @@ fun MainScreen(
     val isDarkTheme = LocalDarkTheme.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
     var showSearch by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var showDelAllConfirm by remember { mutableStateOf(false) }
@@ -61,8 +68,11 @@ fun MainScreen(
     var showRemoveConfirm by remember { mutableStateOf<String?>(null) }
 
     var shareTarget by remember { mutableStateOf<Triple<String, ProfileItem, Boolean>?>(null) }
-    val removeServer: (String) -> Unit = { guid ->
-        if (confirmRemove) showRemoveConfirm = guid else onAction(MainAction.RemoveServer(guid))
+
+    val removeServer: (String) -> Unit = remember(confirmRemove, onAction) {
+        { guid ->
+            if (confirmRemove) showRemoveConfirm = guid else onAction(MainAction.RemoveServer(guid))
+        }
     }
 
     val pagerState = rememberPagerState(
@@ -74,6 +84,11 @@ fun MainScreen(
     val lazyGridStates = remember { mutableStateMapOf<String, LazyGridState>() }
 
     var locateInProgress by remember { mutableStateOf(false) }
+
+    // بهینه‌سازی: یادسپاری PaddingValues برای جلوگیری از ساخت مجدد Object هنگام اسکرول
+    val pageContentPadding = remember {
+        PaddingValues(start = 0.dp, top = 0.dp, end = 0.dp, bottom = 80.dp)
+    }
 
     LaunchedEffect(groups) {
         val validGroupIds = groups.map { it.id }.toSet()
@@ -181,8 +196,35 @@ fun MainScreen(
             onRemove = removeServer,
         )
     }
+
     if (shareQRCodeBitmap != null) {
         QRCodeDialog(bitmap = shareQRCodeBitmap, onDismiss = { onAction(MainAction.DismissQRCodeDialog) })
+    }
+
+    // Kill Switch disconnect confirmation dialog
+    if (uiState.showDisconnectDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { onAction(MainAction.DismissDisconnectDialog) },
+            title = { Text("Kill Switch Active") },
+            text = { Text("Kill Switch is active. Disconnecting will restore internet access and remove protection. Continue?") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { onAction(MainAction.ConfirmDisconnectWithKillSwitch) }
+                ) {
+                    Text("Disconnect", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { onAction(MainAction.DismissDisconnectDialog) }
+                ) {
+                    Text("Cancel")
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 
     ModalNavigationDrawer(
@@ -199,6 +241,7 @@ fun MainScreen(
     ) {
         Scaffold(
             contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
+            containerColor = MaterialTheme.colorScheme.surface,
             topBar = {
                 MainTopBar(
                     isLoading = isLoading,
@@ -239,69 +282,61 @@ fun MainScreen(
                     isDarkTheme = isDarkTheme,
                     onAction = onAction
                 )
-            },
-            floatingActionButton = {},
+            }
         ) { innerPadding ->
-            val layoutDirection = LocalLayoutDirection.current
-
             if (groups.isNotEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
                 ) {
-                    if (groups.size > 1) {
-                        GroupTabBar(
-                            groups = groups,
-                            selectedTabIndex = pagerState.currentPage.coerceIn(0, groups.lastIndex),
-                            mainViewModel = mainViewModel,
-                            onTabClick = { targetIndex ->
-                                scope.launch {
-                                    pagerState.navigateToPageOptimized(
-                                        targetPage = targetIndex,
-                                        animateAdjacentPage = true
-                                    )
+                        if (groups.size > 1) {
+                            GroupTabBar(
+                                groups = groups,
+                                selectedTabIndex = pagerState.currentPage.coerceIn(0, groups.lastIndex),
+                                mainViewModel = mainViewModel,
+                                onTabClick = { targetIndex ->
+                                    scope.launch {
+                                        pagerState.navigateToPageOptimized(
+                                            targetPage = targetIndex,
+                                            animateAdjacentPage = true
+                                        )
+                                    }
                                 }
-                            }
-                        )
-                    }
-
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxSize(),
-                        userScrollEnabled = true,
-                        beyondViewportPageCount = 1,
-                        key = { page -> groups.getOrNull(page)?.id ?: "group-page-$page" }
-                    ) { page ->
-                        val group = groups.getOrNull(page) ?: return@HorizontalPager
-
-                        GroupPagerPage(
-                            groupId = group.id,
-                            mainViewModel = mainViewModel,
-                            selectedGuid = selectedGuid,
-                            doubleColumnDisplay = doubleColumnDisplay,
-                            confirmRemove = confirmRemove,
-                            searchQuery = searchQuery,
-                            lazyListStates = lazyListStates,
-                            lazyGridStates = lazyGridStates,
-                            onSelectServer = { guid -> onAction(MainAction.SelectServer(guid)) },
-                            onEditServer = { guid, profile -> onAction(MainAction.EditServer(guid, profile)) },
-                            onShareServer = { guid, profile ->
-                                shareTarget = Triple(guid, profile, false)
-                            },
-                            onMoreServer = { guid, profile ->
-                                shareTarget = Triple(guid, profile, true)
-                            },
-                            onRemoveServer = removeServer,
-                            contentPadding = PaddingValues(
-                                start = 0.dp,
-                                top = 0.dp,
-                                end = 0.dp,
-                                bottom = 80.dp
                             )
-                        )
+                        }
+
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier.fillMaxSize(),
+                            userScrollEnabled = true,
+                            beyondViewportPageCount = 1,
+                            key = { page -> groups.getOrNull(page)?.id ?: "group-page-$page" }
+                        ) { page ->
+                            val group = groups.getOrNull(page) ?: return@HorizontalPager
+
+                            GroupPagerPage(
+                                groupId = group.id,
+                                mainViewModel = mainViewModel,
+                                selectedGuid = selectedGuid,
+                                doubleColumnDisplay = doubleColumnDisplay,
+                                confirmRemove = confirmRemove,
+                                searchQuery = searchQuery,
+                                lazyListStates = lazyListStates,
+                                lazyGridStates = lazyGridStates,
+                                onSelectServer = { guid -> onAction(MainAction.SelectServer(guid)) },
+                                onEditServer = { guid, profile -> onAction(MainAction.EditServer(guid, profile)) },
+                                onShareServer = { guid, profile ->
+                                    shareTarget = Triple(guid, profile, false)
+                                },
+                                onMoreServer = { guid, profile ->
+                                    shareTarget = Triple(guid, profile, true)
+                                },
+                                onRemoveServer = removeServer,
+                                contentPadding = pageContentPadding
+                            )
+                        }
                     }
-                }
             }
         }
     }

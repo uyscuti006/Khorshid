@@ -5,20 +5,20 @@ import android.content.Context
 import android.content.Intent
 import android.os.UserManager
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.R
 import com.v2ray.ang.core.LauncherManager
+import com.v2ray.ang.handler.KillSwitchManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SubscriptionUpdater
+import com.v2ray.ang.helper.NotificationHelper
 import com.v2ray.ang.util.LogUtil
 
 class BootReceiver : BroadcastReceiver() {
-    /**
-     * This method is called when the BroadcastReceiver is receiving an Intent broadcast.
-     * It handles BOOT_COMPLETED, LOCKED_BOOT_COMPLETED, and MY_PACKAGE_REPLACED.
-     * If the conditions are met, it starts the V2Ray service.
-     *
-     * @param context The Context in which the receiver is running.
-     * @param intent The Intent being received.
-     */
+
+    companion object {
+        private const val TAG = "BootReceiver"
+    }
+
     override fun onReceive(context: Context?, intent: Intent?) {
         val action = intent?.action ?: return
         if (context == null) return
@@ -43,6 +43,11 @@ class BootReceiver : BroadcastReceiver() {
                 LogUtil.w(AppConfig.TAG, "BootReceiver: Unhandled action: $action")
                 return
             }
+        }
+
+        // Kill Switch: if it was active before reboot, log warning
+        if (KillSwitchManager.isEnabled()) {
+            LogUtil.w(TAG, "BootReceiver: Kill Switch was active before reboot — user should enable 'Block connections without VPN' in system settings")
         }
 
         if (!MmkvManager.decodeStartOnBoot()) {

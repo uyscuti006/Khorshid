@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui.main
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import com.v2ray.ang.R
 import com.v2ray.ang.ui.compose.DeleteConfirmDialog
@@ -27,6 +28,7 @@ fun MainDialogs(
             onDismiss = onDismissDelAll
         )
     }
+
     if (showDelDuplicateConfirm) {
         DeleteConfirmDialog(
             message = stringResource(R.string.confirm_delete_duplicate_profiles),
@@ -34,6 +36,7 @@ fun MainDialogs(
             onDismiss = onDismissDelDuplicate
         )
     }
+
     if (showDelInvalidConfirm) {
         DeleteConfirmDialog(
             message = stringResource(R.string.confirm_delete_invalid_profiles),
@@ -41,11 +44,16 @@ fun MainDialogs(
             onDismiss = onDismissDelInvalid
         )
     }
-    if (showRemoveConfirm != null) {
-        val guid = showRemoveConfirm
+
+    showRemoveConfirm?.let { guid ->
+        // بهینه‌سازی: یادسپاری لمبدا تأیید حذف جهت جلوگیری از تخصیص مجدد شیء Lambda در حافظه هنگام Recompositionهای احتمالی
+        val onConfirm = remember(guid, onConfirmRemove) {
+            { onConfirmRemove(guid) }
+        }
+
         DeleteConfirmDialog(
             message = stringResource(R.string.confirm_delete_profile),
-            onConfirm = { onConfirmRemove(guid) },
+            onConfirm = onConfirm,
             onDismiss = onDismissRemove
         )
     }

@@ -244,7 +244,7 @@ object CoreServiceManager {
      *
      * @return True if the core is running again.
      */
-    private fun reloadCore(): Boolean {
+    fun reloadCore(): Boolean {
         if (isReloading) return false
         val service = getService() ?: return false
         if (!isRunning()) return false
