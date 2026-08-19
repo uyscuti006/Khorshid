@@ -35,7 +35,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
+import com.v2ray.ang.extension.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -85,7 +85,6 @@ class MainViewModel(
         MainUiState(
             selectedGroupId = dataSource.getSelectedSubscriptionId(),
             selectedGuid = dataSource.getSelectServer(),
-            statusText = disconnectedText,
             confirmRemove = dataSource.getConfirmRemove(),
             doubleColumnDisplay = dataSource.getDoubleColumnDisplay(),
             selectedCategory = initialCategory,
@@ -249,20 +248,44 @@ class MainViewModel(
             }
 
             is MainServiceEvent.MeasureConfigNotify -> {
-                _uiState.update {
-                    it.copy(
-                        statusText = dataSource.getString(
-                            R.string.connection_running_task_left,
-                            event.progress
-                        )
-                    )
-                }
+                _uiState.update { it.copy(status = MainStatus.TestProgress(event.progress)) }
             }
 
             is MainServiceEvent.MeasureConfigFinish -> {
                 onTestsFinished()
             }
         }
+    }
+
+    internal fun formatStatus(status: MainStatus): String = when (status) {
+        MainStatus.Disconnected -> dataSource.getString(R.string.connection_not_connected)
+        MainStatus.Connected -> dataSource.getString(R.string.connection_connected)
+        MainStatus.Testing -> dataSource.getString(R.string.connection_test_testing)
+        is MainStatus.TestProgress -> dataSource.getString(
+            R.string.connection_running_task_left,
+            status.progress
+        )
+
+        is MainStatus.ConnectionTest -> formatConnectionTestResult(status.result)
+    }
+
+    private fun formatConnectionTestResult(result: ConnectionTestResult): String {
+        val status = if (result.delayMillis >= 0) {
+            val delay = dataSource.getString(R.string.server_test_delay_value, result.delayMillis)
+            dataSource.getString(R.string.connection_test_available, delay)
+        } else {
+            val detail = result.errorMessage.ifBlank {
+                dataSource.getString(R.string.connection_test_empty_message)
+            }
+            dataSource.getString(R.string.connection_test_error, detail)
+        }
+
+        if (result.delayMillis < 0 || (result.country == null && result.ipAddress == null)) {
+            return status
+        }
+
+        val unknown = dataSource.getString(R.string.value_unknown)
+        return "$status\n(${result.country ?: unknown}) ${result.ipAddress ?: unknown}"
     }
 
     // ---------- Public state accessors ----------
@@ -436,7 +459,7 @@ class MainViewModel(
             try {
                 ensureSubscriptionConfigured()
                 initialPageReady.await()
-                delay(32L)
+                delay(32)
                 dataSource.initAssets()
                 dataSource.syncSubscriptions()
             } catch (cancelled: CancellationException) {
@@ -465,8 +488,7 @@ class MainViewModel(
             ServersCache(
                 guid = guid,
                 profile = profile.copy(),
-                testDelayMillis = affiliation?.testDelayMillis ?: 0L,
-                testDelayString = affiliation?.getTestDelayString().orEmpty()
+                testDelayMillis = affiliation?.testDelayMillis ?: 0L
             )
         }
 
@@ -579,7 +601,7 @@ class MainViewModel(
                 preloadJob = viewModelScope.launch(preloadDispatcher) {
                     preloadOrder.forEach { groupId ->
                         ensureActive()
-                        delay(32L)
+                        delay(32)
                         val servers = loadGroup(groupId, forceRefresh)
                         updateGroupUi(groupId, servers)
                     }
@@ -832,7 +854,7 @@ class MainViewModel(
             }
             order.forEachIndexed { index, groupId ->
                 ensureActive()
-                if (index > 0) delay(32L)
+                if (index > 0) delay(32)
                 updateGroupUi(groupId, loadGroup(groupId, forceRefresh = true))
             }
         }
@@ -843,7 +865,7 @@ class MainViewModel(
         keywordFilter = keyword
         filterJob?.cancel()
         filterJob = viewModelScope.launch(defaultDispatcher) {
-            delay(300L)
+            delay(300)
             val snapshot = cacheMutex.withLock { groupDataCache.toMap() }
             ensureActive()
             snapshot.forEach { (groupId, servers) ->
@@ -896,7 +918,7 @@ class MainViewModel(
         _uiState.update {
             it.copy(
                 isTesting = false,
-                statusText = if (it.isRunning) connectedText else disconnectedText
+                status = if (it.isRunning) MainStatus.Connected else MainStatus.Disconnected
             )
         }
     }
@@ -905,25 +927,32 @@ class MainViewModel(
         dataSource.cancelAllPing()
         val groupId = uiState.value.selectedGroupId
         val servers = currentServers()
-        dataSource.clearAllTestDelayResults(servers.map { it.guid })
         if (servers.isEmpty()) {
             _uiState.update { it.copy(isTesting = false) }
             return
+        }
+        val serverGuids = servers.map { it.guid }
+        mutableServersForGroup(groupId).update { current ->
+            current.map { server ->
+                if (server.testDelayMillis == 0L) server
+                else server.copy(testDelayMillis = 0L)
+            }
         }
         testingGroupId = groupId
         _uiState.update {
             it.copy(
                 isTesting = true,
-                statusText = dataSource.getString(R.string.connection_test_testing)
+                status = MainStatus.Testing
             )
         }
         viewModelScope.launch(ioDispatcher) {
+            dataSource.clearAllTestDelayResults(serverGuids)
             cacheMutex.withLock { groupDataCache.remove(groupId) }
             dataSource.sendMsg2TestService(
                 TestServiceMessage(
                     key = AppConfig.MSG_MEASURE_CONFIG_START,
                     subscriptionId = groupId,
-                    serverGuids = if (keywordFilter.isNotEmpty()) servers.map { it.guid } else emptyList(),
+                    serverGuids = if (keywordFilter.isNotEmpty()) serverGuids else emptyList(),
                     onlyTcp = onlyTcp
                 )
             )

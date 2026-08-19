@@ -3,7 +3,6 @@ package com.v2ray.ang.ui.compose
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -45,8 +45,8 @@ import com.v2ray.ang.R
 fun ConfirmDialog(
     title: String? = null,
     message: String,
-    confirmText: String = stringResource(android.R.string.ok),
-    dismissText: String? = stringResource(android.R.string.cancel),
+    confirmText: String = stringResource(R.string.action_ok),
+    dismissText: String? = stringResource(R.string.action_cancel),
     confirmIcon: @Composable (() -> Unit)? = null,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
@@ -178,7 +178,7 @@ fun QRCodeDialog(
         text = {
             Image(
                 bitmap = bitmap.asImageBitmap(),
-                contentDescription = stringResource(R.string.title_qr_code),
+                contentDescription = stringResource(R.string.acc_qr_code),
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
@@ -224,7 +224,7 @@ fun <T> SelectListDialog(
                                     role = Role.RadioButton
                                 ) else Modifier.clickable { onSelected(option) }
                             )
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (showRadio) {
@@ -237,11 +237,7 @@ fun <T> SelectListDialog(
                         Text(
                             text = optionText(option),
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = if (!showRadio)
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp, horizontal = 4.dp)
-                            else Modifier
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
@@ -250,7 +246,7 @@ fun <T> SelectListDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(android.R.string.cancel))
+                Text(stringResource(R.string.action_cancel))
             }
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,

@@ -36,7 +36,7 @@ import com.v2ray.ang.R
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.ui.compose.LocalDarkTheme
 import com.v2ray.ang.ui.compose.QRCodeDialog
-import kotlinx.coroutines.delay
+import com.v2ray.ang.extension.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
@@ -50,7 +50,7 @@ fun MainScreen(
     val groups = uiState.groups
     val isLoading by mainViewModel.isLoading.collectAsStateWithLifecycle()
     val isRunning = uiState.isRunning
-    val displayText = uiState.statusText
+    val displayText = mainViewModel.formatStatus(uiState.status)
     val selectedGuid = uiState.selectedGuid
     val doubleColumnDisplay = uiState.doubleColumnDisplay
     val confirmRemove = uiState.confirmRemove
@@ -145,7 +145,7 @@ fun MainScreen(
                     lazyListStates[target.groupId] != null
                 }
                 if (ready) return@repeat
-                delay(16L)
+                delay(16)
             }
 
             if (latestDoubleColumnDisplay) {
@@ -164,7 +164,7 @@ fun MainScreen(
                 }
             }
         } finally {
-            delay(32L)
+            delay(32)
             locateInProgress = false
             mainViewModel.onAction(MainAction.LocateHandled(target))
         }

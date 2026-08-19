@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
@@ -15,7 +17,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,6 +46,7 @@ import com.v2ray.ang.ui.compose.AppTopBar
 import com.v2ray.ang.ui.compose.DeleteConfirmDialog
 import com.v2ray.ang.ui.compose.FormDropdownField
 import com.v2ray.ang.ui.compose.FormTextField
+import com.v2ray.ang.ui.compose.NavigationBarsSpacer
 import com.v2ray.ang.ui.compose.SettingsSwitchItem
 import com.v2ray.ang.ui.compose.verticalScrollbar
 import com.v2ray.ang.util.JsonUtil
@@ -101,8 +103,7 @@ abstract class BaseServerActivity : BaseComponentActivity() {
 
     @Composable
     protected fun CommonBasicFields(
-        state: ServerUiState,
-        showPort: Boolean = true
+        state: ServerUiState
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FormTextField(
@@ -115,14 +116,12 @@ abstract class BaseServerActivity : BaseComponentActivity() {
                 state.address,
                 { state.address = it }
             )
-            if (showPort) {
-                FormTextField(
-                    stringResource(R.string.server_lab_port),
-                    state.port,
-                    { state.port = it },
-                    keyboardType = KeyboardType.Number
-                )
-            }
+            FormTextField(
+                stringResource(R.string.server_lab_port),
+                state.port,
+                { state.port = it },
+                keyboardType = KeyboardType.Number
+            )
         }
     }
 
@@ -457,6 +456,7 @@ abstract class BaseServerActivity : BaseComponentActivity() {
         var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
         val scrollState = rememberScrollState()
         Scaffold(
+            contentWindowInsets = WindowInsets(0),
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
             topBar = {
                 AppTopBar(
@@ -467,14 +467,14 @@ abstract class BaseServerActivity : BaseComponentActivity() {
                             IconButton(onClick = { showDeleteDialog = true }) {
                                 Icon(
                                     painterResource(R.drawable.ic_delete_24dp),
-                                    stringResource(R.string.menu_item_del_config)
+                                    stringResource(R.string.acc_delete)
                                 )
                             }
                         }
                         IconButton(onClick = onSaveClick) {
                             Icon(
                                 painterResource(R.drawable.ic_fab_check),
-                                stringResource(R.string.menu_item_save_config)
+                                stringResource(R.string.acc_save)
                             )
                         }
                     }
@@ -490,9 +490,11 @@ abstract class BaseServerActivity : BaseComponentActivity() {
                     .verticalScroll(scrollState)
                     .verticalScrollbar(scrollState)
                     .padding(bottom = 36.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                content = content
-            )
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                content()
+                NavigationBarsSpacer()
+            }
         }
         if (showDeleteDialog) {
             DeleteConfirmDialog(

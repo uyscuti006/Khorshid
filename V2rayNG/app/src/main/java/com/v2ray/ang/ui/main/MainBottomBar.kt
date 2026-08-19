@@ -2,6 +2,7 @@ package com.v2ray.ang.ui.main
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -89,7 +94,9 @@ fun MainBottomBar(
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { contentDescription = displayText }
                 )
             }
         }
@@ -110,7 +117,10 @@ fun MainBottomBar(
                 painter = painterResource(
                     if (isRunning) R.drawable.ic_stop_24dp else R.drawable.ic_play_24dp
                 ),
-                contentDescription = if (isRunning) "Stop" else "Start",
+                contentDescription = stringResource(
+                    if (isRunning) R.string.acc_stop else R.string.acc_start
+                ),
+                tint = Color.White,
                 modifier = Modifier.size(24.dp)
             )
         }

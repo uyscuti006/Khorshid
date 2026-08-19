@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
@@ -329,6 +330,195 @@ private fun ServerCardItem(
                         IconButton(onClick = { onRemoveServer(serverCache.guid) }, modifier = Modifier.size(32.dp)) {
                             Icon(painterResource(R.drawable.ic_delete_24dp), null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.error)
                         }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (subRemarks.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 6.dp)
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = subRemarks.take(1).uppercase(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+                Text(
+                    text = statistics,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = typeDescription,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colorConfigType,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = serverCache.testDelayString,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = if (serverCache.testDelayMillis < 0L) colorPingRed else colorPing,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServerItemColumn(
+    serverCache: ServersCache,
+    selectedGuid: String?,
+    subscriptionId: String,
+    doubleColumnDisplay: Boolean,
+    onSelectServer: (String) -> Unit,
+    onEditServer: (String, ProfileItem) -> Unit,
+    onShareServer: (String, ProfileItem) -> Unit,
+    onMoreServer: (String, ProfileItem) -> Unit,
+    onRemoveServer: (String) -> Unit
+) {
+    val profile = serverCache.profile
+    val subRemarks = if (subscriptionId.isEmpty()) {
+        MmkvManager.decodeSubscription(profile.subscriptionId)?.remarks?.firstOrNull()?.toString() ?: ""
+    } else ""
+    Column {
+        ServerListItem(
+            remarks = profile.remarks,
+            statistics = profile.description.nullIfBlank() ?: AngConfigManager.generateDescription(profile),
+            typeDescription = getProtocolDescription(profile),
+            testDelayMillis = serverCache.testDelayMillis,
+            isSelected = serverCache.guid == selectedGuid,
+            subscriptionRemarks = subRemarks,
+            doubleColumnDisplay = doubleColumnDisplay,
+            onClick = { onSelectServer(serverCache.guid) },
+            onEdit = { onEditServer(serverCache.guid, profile) },
+            onShare = { onShareServer(serverCache.guid, profile) },
+            onRemove = { onRemoveServer(serverCache.guid) },
+            onMore = { onMoreServer(serverCache.guid, profile) }
+        )
+        ItemDivider()
+    }
+}
+
+@Composable
+fun ServerListItem(
+    remarks: String,
+    statistics: String,
+    typeDescription: String,
+    testDelayMillis: Long,
+    isSelected: Boolean,
+    subscriptionRemarks: String,
+    doubleColumnDisplay: Boolean,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onShare: () -> Unit,
+    onRemove: () -> Unit,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier,
+    dragModifier: Modifier = Modifier
+) {
+    val testResult = if (testDelayMillis == 0L) {
+        ""
+    } else {
+        stringResource(R.string.server_test_delay_value, testDelayMillis)
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .clickable(onClick = onClick)
+            .then(dragModifier)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = profile.remarks,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                        lineBreak = LineBreak.Paragraph
+                    ),
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (doubleColumnDisplay) {
+                    IconButton(onClick = onMore, Modifier.size(36.dp)) {
+                        Icon(
+                            painterResource(R.drawable.ic_more_vert_24dp),
+                            stringResource(R.string.acc_more),
+                            Modifier.size(24.dp)
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onShare, Modifier.size(36.dp)) {
+                        Icon(
+                            painterResource(R.drawable.ic_share_24dp),
+                            stringResource(R.string.title_configuration_share),
+                            Modifier.size(24.dp)
+                        )
+                    }
+                    IconButton(onClick = onEdit, Modifier.size(36.dp)) {
+                        Icon(
+                            painterResource(R.drawable.ic_edit_24dp),
+                            stringResource(R.string.acc_edit),
+                            Modifier.size(24.dp)
+                        )
+                    }
+                    IconButton(onClick = onRemove, Modifier.size(36.dp)) {
+                        Icon(
+                            painterResource(R.drawable.ic_delete_24dp),
+                            stringResource(R.string.acc_delete),
+                            Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                if (subscriptionRemarks.isNotBlank()) {
+                    Box(
+                        Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)), Alignment.Center
+                    ) {
+                        Text(subscriptionRemarks.take(1).uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
