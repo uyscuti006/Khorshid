@@ -191,9 +191,6 @@
     <string name="autofailover_no_alt">Connection lost. No alternative server found.</string>
     <string name="autofailover_limit_reached">Auto-failover limit reached (%1$d switches in %2$d min). Please reconnect manually.</string>
 
-    <string name="title_pref_auto_disconnect_vpn">Auto-disconnect other VPNs</string>
-    <string name="summary_pref_auto_disconnect_vpn">Automatically disconnect other VPN apps before connecting.</string>
-
     <string name="title_pref_kill_switch">Kill Switch</string>
     <string name="summary_pref_kill_switch">Block all internet traffic if VPN disconnects unexpectedly.</string>
     <string name="kill_switch_active">⚠ Internet blocked — VPN disconnected. Tap to retry or disable Kill Switch.</string>

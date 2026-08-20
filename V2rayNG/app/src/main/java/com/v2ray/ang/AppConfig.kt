@@ -95,9 +95,6 @@ object AppConfig {
     const val PREF_FAILOVER_MAX = "pref_failover_max"
     const val PREF_FAILOVER_BLACKLIST_MS = "pref_failover_blacklist_ms"
 
-    // Auto-disconnect other VPN
-    const val PREF_AUTO_DISCONNECT_OTHER_VPN = "pref_auto_disconnect_other_vpn"
-
     // Kill Switch
     const val PREF_KILL_SWITCH_ENABLED = "pref_kill_switch_enabled"
     const val PREF_KILL_SWITCH_RECONNECT_MS = "pref_kill_switch_reconnect_ms"
