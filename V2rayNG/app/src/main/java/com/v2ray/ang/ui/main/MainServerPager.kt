@@ -57,6 +57,9 @@ import com.v2ray.ang.ui.compose.ReorderableListItem
 import com.v2ray.ang.ui.compose.colorConfigType
 import com.v2ray.ang.ui.compose.colorPing
 import com.v2ray.ang.ui.compose.colorPingRed
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.IntrinsicSize
+import com.v2ray.ang.ui.compose.ItemDivider
 import com.v2ray.ang.ui.compose.verticalScrollbar
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyGridState
@@ -304,7 +307,7 @@ private fun ServerCardItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = profile.remarks,
+                    text = serverCache.profile.remarks,
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
@@ -316,15 +319,15 @@ private fun ServerCardItem(
                 )
 
                 if (doubleColumnDisplay) {
-                    IconButton(onClick = { onMoreServer(serverCache.guid, profile) }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { onMoreServer(serverCache.guid, serverCache.profile) }, modifier = Modifier.size(32.dp)) {
                         Icon(painterResource(R.drawable.ic_more_vert_24dp), null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        IconButton(onClick = { onShareServer(serverCache.guid, profile) }, modifier = Modifier.size(32.dp)) {
+                        IconButton(onClick = { onShareServer(serverCache.guid, serverCache.profile) }, modifier = Modifier.size(32.dp)) {
                             Icon(painterResource(R.drawable.ic_share_24dp), null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        IconButton(onClick = { onEditServer(serverCache.guid, profile) }, modifier = Modifier.size(32.dp)) {
+                        IconButton(onClick = { onEditServer(serverCache.guid, serverCache.profile) }, modifier = Modifier.size(32.dp)) {
                             Icon(painterResource(R.drawable.ic_edit_24dp), null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         IconButton(onClick = { onRemoveServer(serverCache.guid) }, modifier = Modifier.size(32.dp)) {
@@ -382,7 +385,7 @@ private fun ServerCardItem(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = serverCache.testDelayString,
+                    text = if (serverCache.testDelayMillis > 0L) stringResource(R.string.server_test_delay_value, serverCache.testDelayMillis) else "",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     color = if (serverCache.testDelayMillis < 0L) colorPingRed else colorPing,
                     maxLines = 1,
@@ -466,7 +469,7 @@ fun ServerListItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = profile.remarks,
+                    text = remarks,
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
@@ -529,7 +532,7 @@ fun ServerListItem(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (subRemarks.isNotBlank()) {
+                if (subscriptionRemarks.isNotBlank()) {
                     Box(
                         modifier = Modifier
                             .padding(end = 6.dp)
@@ -539,7 +542,7 @@ fun ServerListItem(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = subRemarks.take(1).uppercase(),
+                            text = subscriptionRemarks.take(1).uppercase(),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -571,9 +574,9 @@ fun ServerListItem(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = serverCache.testDelayString,
+                    text = if (testDelayMillis > 0L) stringResource(R.string.server_test_delay_value, testDelayMillis) else "",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = if (serverCache.testDelayMillis < 0L) colorPingRed else colorPing,
+                    color = if (testDelayMillis < 0L) colorPingRed else colorPing,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

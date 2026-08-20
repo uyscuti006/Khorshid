@@ -8,13 +8,14 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
-import com.v2ray.ang.reachability.CleanIPGenerator
-import com.v2ray.ang.reachability.IpScannerManager
+import com.v2ray.ang.reachability.IpScanPersistence
+import com.v2ray.ang.reachability.KhorshidConfigGenerator
 import com.v2ray.ang.handler.AutoFailoverManager
 import com.v2ray.ang.handler.KillSwitchManager
 import com.v2ray.ang.dto.UrlContentRequest
 import com.v2ray.ang.handler.CipherSuitesManager
 import com.v2ray.ang.util.HttpUtil
+import com.v2ray.ang.dto.ConnectionTestResult
 import com.v2ray.ang.dto.GroupMapItem
 import com.v2ray.ang.dto.LocateTarget
 import com.v2ray.ang.dto.TestServiceMessage
@@ -60,7 +61,7 @@ class MainViewModel(
     companion object {
         private const val TAG = "MainViewModel"
         private const val DEFAULT_SUBSCRIPTION_URL = "https://raw.githubusercontent.com/uyscuti006/vpn-public-configs/main/sub.txt"
-        private const val DEFAULT_SUBSCRIPTION_REMARKS = "Default Subscription"
+        private const val DEFAULT_SUBSCRIPTION_REMARKS = "Khorshid Configs"
         private const val PREF_LAST_CATEGORY = "pref_last_category"
         private const val PREF_APP_THEME = "pref_app_theme"
     }
@@ -68,9 +69,6 @@ class MainViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
     private val preloadDispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
-
-    private val disconnectedText: String = dataSource.getString(R.string.connection_not_connected)
-    private val connectedText: String = dataSource.getString(R.string.connection_connected)
 
     private val initialCategory: ConfigCategory = run {
         val savedName = MmkvManager.decodeSettingsString(PREF_LAST_CATEGORY, ConfigCategory.ALL.name)
@@ -80,7 +78,6 @@ class MainViewModel(
 
     private val savedThemeMode: String = MmkvManager.decodeSettingsString(PREF_APP_THEME, "system") ?: "system"
 
-    // ---------- UI state ----------
     private val _uiState = MutableStateFlow(
         MainUiState(
             selectedGroupId = dataSource.getSelectedSubscriptionId(),
@@ -95,7 +92,6 @@ class MainViewModel(
     )
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
-    // ---------- Connection requests ----------
     private val _requestConnectAfterPick = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val connectRequest: SharedFlow<Unit> = _requestConnectAfterPick.asSharedFlow()
 
@@ -105,12 +101,10 @@ class MainViewModel(
     private val _disconnectRequest = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val disconnectRequest: SharedFlow<Unit> = _disconnectRequest.asSharedFlow()
 
-    // ---------- Keyword filtering ----------
     @Volatile
     private var keywordFilter: String = ""
     private var filterJob: Job? = null
 
-    // ---------- Groups & cache ----------
     private val cacheMutex = Mutex()
     private val groupDataCache = mutableMapOf<String, List<ServersCache>>()
     private val groupPageFlows = ConcurrentHashMap<String, MutableStateFlow<List<ServersCache>>>()
@@ -137,22 +131,30 @@ class MainViewModel(
 
     private val initialPageReady = CompletableDeferred<Unit>()
 
-    // ---------- Service events ----------
+    fun getCleanIpGroupId(): String? {
+        val subs = dataSource.getSubscriptions()
+        return subs.find { it.subscription.remarks == KhorshidConfigGenerator.CLEAN_IP_GROUP_NAME }?.guid
+    }
+
+    fun getDefaultGroupId(): String? {
+        val subs = dataSource.getSubscriptions()
+        return subs.find { it.subscription.remarks == DEFAULT_SUBSCRIPTION_REMARKS }?.guid
+    }
+
     init {
         collectServiceEvents()
+        ensureSubscriptionConfigured()
         setupGroupTab()
 
-        // Setup Auto-failover callback
         AutoFailoverManager.onFailoverNeeded = {
             _restartConnectRequest.tryEmit(Unit)
         }
 
-        // Setup Kill Switch callbacks
         KillSwitchManager.onReconnectNeeded = {
             _restartConnectRequest.tryEmit(Unit)
         }
         KillSwitchManager.onMaxRetriesReached = {
-            _uiState.update { it.copy(statusText = "Connection failed. Tap to retry or disable Kill Switch.") }
+            _uiState.update { it.copy(status = MainStatus.TestProgress("Connection failed. Tap to retry or disable Kill Switch.")) }
         }
     }
 
@@ -173,7 +175,6 @@ class MainViewModel(
                 KillSwitchManager.exitBlockingMode()
             }
             MainServiceEvent.StateNotRunning -> {
-                // Restore CipherSuites backup BEFORE updating state
                 if (!skipRestoreOnNextStop) {
                     val guid = dataSource.getSelectServer()
                     if (!guid.isNullOrBlank()) {
@@ -182,16 +183,12 @@ class MainViewModel(
                 }
                 skipRestoreOnNextStop = false
 
-                // Kill Switch: enter blocking mode instead of fully disconnecting
                 if (wasRunning && KillSwitchManager.isEnabled()) {
                     _uiState.update { it.copy(isBlocking = true, isRunning = false) }
                     KillSwitchManager.enterBlockingMode(viewModelScope)
                     LogUtil.i(TAG, "VPN stopped — Kill Switch active, entering blocking mode")
-                    // Do NOT call updateRunningState here — stay in blocking
                 } else {
                     updateRunningState(false, clearTestingText = false)
-
-                    // Auto-failover: immediate failover on unexpected disconnect
                     if (wasRunning && AutoFailoverManager.isEnabled()) {
                         LogUtil.i(TAG, "VPN stopped unexpectedly — triggering immediate failover")
                         AutoFailoverManager.triggerImmediateFailover()
@@ -210,20 +207,16 @@ class MainViewModel(
             is MainServiceEvent.StateStartFailure -> {
                 updateRunningState(false)
                 AutoFailoverManager.cancelHealthCheck()
-                // If kill switch is on, stay in blocking mode for retry
                 if (KillSwitchManager.isEnabled()) {
                     _uiState.update { it.copy(isBlocking = true) }
                 }
             }
 
             MainServiceEvent.StateStopSuccess -> {
-                // If Kill Switch is active, stay in blocking mode (don't fully disconnect)
                 if (KillSwitchManager.isEnabled() && _uiState.value.isBlocking) {
-                    // Already in blocking mode, just cancel health check
                     AutoFailoverManager.cancelHealthCheck()
                     return
                 }
-                // Normal stop: restore backup and fully disconnect
                 val guid = dataSource.getSelectServer()
                 if (!guid.isNullOrBlank()) {
                     CipherSuitesManager.restoreAfterDisconnect(guid)
@@ -231,12 +224,8 @@ class MainViewModel(
                 AutoFailoverManager.cancelHealthCheck()
                 updateRunningState(false)
             }
-            is MainServiceEvent.MeasureDelaySuccess -> {
-                val delay = Regex("(-?\\d+)\\s*ms", RegexOption.IGNORE_CASE)
-                    .find(event.content)
-                    ?.groupValues?.get(1)
-                    ?.toLongOrNull() ?: -1L
-                _uiState.update { it.copy(statusText = event.content, currentPingDelay = delay) }
+            is MainServiceEvent.MeasureDelayResult -> {
+                _uiState.update { it.copy(status = MainStatus.ConnectionTest(event.result), currentPingDelay = event.result.delayMillis) }
             }
 
             MainServiceEvent.MeasureConfigSuccess -> {
@@ -265,7 +254,6 @@ class MainViewModel(
             R.string.connection_running_task_left,
             status.progress
         )
-
         is MainStatus.ConnectionTest -> formatConnectionTestResult(status.result)
     }
 
@@ -288,7 +276,6 @@ class MainViewModel(
         return "$status\n(${result.country ?: unknown}) ${result.ipAddress ?: unknown}"
     }
 
-    // ---------- Public state accessors ----------
     fun serversForGroup(groupId: String): StateFlow<List<ServersCache>> =
         groupPageFlows.computeIfAbsent(groupId) { MutableStateFlow(emptyList()) }
             .asStateFlow()
@@ -299,7 +286,6 @@ class MainViewModel(
     private fun currentServers(): List<ServersCache> =
         mutableServersForGroup(uiState.value.selectedGroupId).value
 
-    // ---------- Action handler ----------
     fun onAction(action: MainAction) {
         when (action) {
             MainAction.Initialize -> initialize()
@@ -328,11 +314,22 @@ class MainViewModel(
                 _uiState.update { it.copy(shareQRCodeBitmap = null) }
             }
 
-            // New actions for Khorshid UI
             is MainAction.SelectCategory -> {
                 MmkvManager.encodeSettings(PREF_LAST_CATEGORY, action.category.name)
+
+                val cleanIpGroup = getCleanIpGroupId()
+                val defaultGroup = getDefaultGroupId()
+                val targetGroupId = if (action.category == ConfigCategory.CLEAN_IP) {
+                    cleanIpGroup ?: uiState.value.selectedGroupId
+                } else {
+                    defaultGroup ?: uiState.value.selectedGroupId
+                }
+
+                if (targetGroupId.isNotEmpty() && targetGroupId != uiState.value.selectedGroupId) {
+                    subscriptionIdChanged(targetGroupId)
+                }
+
                 _uiState.update { it.copy(selectedCategory = action.category) }
-                // If currently connected, disconnect and reconnect with new category
                 if (uiState.value.isRunning) {
                     _restartConnectRequest.tryEmit(Unit)
                 }
@@ -340,10 +337,9 @@ class MainViewModel(
 
             MainAction.ToggleTheme -> {
                 val currentMode = ThemeManager.themeMode.value
-                // Simple toggle: Light ↔ Dark
                 val newMode = when (currentMode) {
-                    "2" -> "1"  // Dark → Light
-                    else -> "2"  // Light/System → Dark
+                    "2" -> "1"
+                    else -> "2"
                 }
                 ThemeManager.setThemeMode(newMode)
                 val isDark = newMode == "2"
@@ -363,7 +359,7 @@ class MainViewModel(
                 connectJob?.cancel()
                 connectJob = null
                 cancelAllPing()
-                _uiState.update { it.copy(isConnecting = false, statusText = disconnectedText) }
+                _uiState.update { it.copy(isConnecting = false, status = MainStatus.Disconnected) }
             }
 
             MainAction.ToggleCipherSuites -> {
@@ -373,30 +369,24 @@ class MainViewModel(
 
                 if (_uiState.value.isRunning) {
                     if (newState) {
-                        // ENABLING while connected: apply cipher to current server + restart
                         val guid = dataSource.getSelectServer()
                         if (!guid.isNullOrBlank()) {
                             CipherSuitesManager.applyBeforeConnect(guid)
-                            // Restart VPN to apply new settings
                             skipRestoreOnNextStop = true
                             _restartConnectRequest.tryEmit(Unit)
                         }
                     } else {
-                        // DISABLING while connected: disconnect to restore defaults
                         _disconnectRequest.tryEmit(Unit)
                     }
                 }
             }
 
             MainAction.EnterAdvancedMode -> {
-                // Reset CipherSuites state when entering Advanced mode
-                // This ensures Advanced screen connections don't use CipherSuites
                 CipherSuitesManager.setEnabled(false)
                 _uiState.update { it.copy(isCipherSuitesEnabled = false) }
             }
 
             MainAction.ToggleService -> {
-                // If Kill Switch is active, show confirmation dialog
                 if (KillSwitchManager.isEnabled() && (_uiState.value.isRunning || _uiState.value.isBlocking)) {
                     _uiState.update { it.copy(showDisconnectDialog = true) }
                     return
@@ -416,12 +406,10 @@ class MainViewModel(
 
             MainAction.ConfirmDisconnectWithKillSwitch -> {
                 _uiState.update { it.copy(showDisconnectDialog = false) }
-                // User confirmed: fully disconnect (isForced=true equivalent)
                 connectJob?.cancel()
                 connectJob = null
                 cancelAllPing()
-                _uiState.update { it.copy(isRunning = false, isBlocking = false, statusText = disconnectedText) }
-                // Restore CipherSuites backup
+                _uiState.update { it.copy(isRunning = false, isBlocking = false, status = MainStatus.Disconnected) }
                 val guid = dataSource.getSelectServer()
                 if (!guid.isNullOrBlank()) {
                     CipherSuitesManager.restoreAfterDisconnect(guid)
@@ -438,19 +426,36 @@ class MainViewModel(
         }
     }
 
-    // ---------- Initialization ----------
     private fun ensureSubscriptionConfigured() {
         val existingSubs = dataSource.getSubscriptions()
         val hasDefault = existingSubs.any { it.subscription.remarks == DEFAULT_SUBSCRIPTION_REMARKS }
+
         if (!hasDefault) {
-            val subItem = SubscriptionItem().apply {
-                url = DEFAULT_SUBSCRIPTION_URL
-                remarks = DEFAULT_SUBSCRIPTION_REMARKS
-                enabled = true
+            val oldSub = existingSubs.find {
+                val r = it.subscription.remarks?.trim()?.lowercase().orEmpty()
+                r == "default subscription" || r == "default"
             }
-            val guid = UUID.randomUUID().toString()
-            MmkvManager.encodeSubscription(guid, subItem)
-            LogUtil.i(AppConfig.TAG, "Created default subscription with URL: $DEFAULT_SUBSCRIPTION_URL")
+            if (oldSub != null) {
+                oldSub.subscription.remarks = DEFAULT_SUBSCRIPTION_REMARKS
+                MmkvManager.encodeSubscription(oldSub.guid, oldSub.subscription)
+                LogUtil.i(AppConfig.TAG, "Migrated subscription to: $DEFAULT_SUBSCRIPTION_REMARKS")
+            } else {
+                val subItem = SubscriptionItem().apply {
+                    url = DEFAULT_SUBSCRIPTION_URL
+                    remarks = DEFAULT_SUBSCRIPTION_REMARKS
+                    enabled = true
+                }
+                val guid = UUID.randomUUID().toString()
+                MmkvManager.encodeSubscription(guid, subItem)
+                MmkvManager.encodeServerList(ArrayList<String>(), guid)
+
+                val subsList = MmkvManager.decodeSubsList().toMutableList()
+                if (!subsList.contains(guid)) {
+                    subsList.add(guid)
+                    MmkvManager.encodeSubsList(subsList)
+                }
+                LogUtil.i(AppConfig.TAG, "Created default subscription with URL: $DEFAULT_SUBSCRIPTION_URL")
+            }
         }
     }
 
@@ -479,9 +484,8 @@ class MainViewModel(
         }
     }
 
-    // ---------- Group & server loading ----------
     private suspend fun buildServersCache(guids: List<String>): List<ServersCache> =
-        guids.mapNotNull { guid ->
+        guids.distinct().mapNotNull { guid ->
             currentCoroutineContext().ensureActive()
             val profile = dataSource.decodeServerConfig(guid) ?: return@mapNotNull null
             val affiliation = dataSource.decodeAffiliationInfo(guid)
@@ -490,7 +494,7 @@ class MainViewModel(
                 profile = profile.copy(),
                 testDelayMillis = affiliation?.testDelayMillis ?: 0L
             )
-        }
+        }.distinctBy { it.guid }
 
     private suspend fun loadGroup(
         groupId: String,
@@ -569,7 +573,13 @@ class MainViewModel(
                 val groups = dataSource.getSubscriptions().map {
                     GroupMapItem(id = it.guid, remarks = it.subscription.remarks)
                 }
-                val selectedGroup = resolveSelectedGroup(groups)
+
+                val selectedGroup = if (uiState.value.selectedCategory == ConfigCategory.CLEAN_IP) {
+                    getCleanIpGroupId() ?: resolveSelectedGroup(groups)
+                } else {
+                    getDefaultGroupId() ?: resolveSelectedGroup(groups)
+                }
+
                 val validIds = groups.mapTo(HashSet()) { it.id }
                 groupPageFlows.keys.removeAll { it !in validIds }
                 groupLoadMutexes.keys.removeAll { it !in validIds }
@@ -618,7 +628,6 @@ class MainViewModel(
         }.also { setupGroupJob = it }
     }
 
-    // ---------- Business actions (coroutine-based) ----------
     private fun importBatchConfig(configText: String) {
         launchLoading {
             withContext(ioDispatcher) {
@@ -901,7 +910,6 @@ class MainViewModel(
         if (!servers.moveItem(fromPosition, toPosition)) return
         val guids = servers.map { it.guid }
         mutableServersForGroup(groupId).value = servers
-        // A drag emits several moves; serialize writes so an older order cannot overwrite a newer one.
         val previousPersistenceJob = serverOrderPersistenceJobs[groupId]
         serverOrderPersistenceJobs[groupId] = viewModelScope.launch(ioDispatcher) {
             previousPersistenceJob?.join()
@@ -910,7 +918,6 @@ class MainViewModel(
         }
     }
 
-    // ---------- Testing ----------
     fun cancelAllPing() {
         dataSource.cancelAllPing()
         testingGroupId = null
@@ -962,99 +969,134 @@ class MainViewModel(
     fun testCurrentServerRealPing() {
         _uiState.update {
             it.copy(
-                statusText = dataSource.getString(R.string.connection_test_testing),
+                status = MainStatus.Testing,
                 currentPingDelay = -2L
             )
         }
         dataSource.testCurrentServerRealPing()
     }
 
-    // ---------- Connect to Fastest ----------
     private fun connectToFastestServer() {
         launchLoading { withContext(ioDispatcher) {
             try {
                 connectJob?.cancel()
                 connectJob = currentCoroutineContext()[Job]
-                _uiState.update { it.copy(isConnecting = true, statusText = "Updating configs...") }
+                val category = uiState.value.selectedCategory
 
-                ensureSubscriptionConfigured()
+                val guids: List<String>
+                val targetGroupId: String
 
-                val existingSubs = dataSource.getSubscriptions()
-                val defaultSub = existingSubs.find { it.subscription.remarks == DEFAULT_SUBSCRIPTION_REMARKS }
+                if (category == ConfigCategory.CLEAN_IP) {
+                    _uiState.update { it.copy(isConnecting = true, status = MainStatus.TestProgress("Loading Clean IPs...")) }
 
-                if (defaultSub != null) {
-                    defaultSub.subscription.url = "$DEFAULT_SUBSCRIPTION_URL?t=${System.currentTimeMillis()}"
-                    MmkvManager.encodeSubscription(defaultSub.guid, defaultSub.subscription)
+                    val cleanGroupId = getCleanIpGroupId()
+                    var cleanGuids = if (cleanGroupId != null) dataSource.getServerGuidList(cleanGroupId) else emptyList()
 
-                    _uiState.update { it.copy(statusText = "Downloading configs...") }
-
-                    val result = dataSource.updateConfigViaSub(defaultSub)
-
-                    // Parse and cache CipherSuites profile from subscription content
-                    try {
-                        val rawContent = HttpUtil.getUrlContent(UrlContentRequest(url = defaultSub.subscription.url))
-                        if (rawContent != null) {
-                            val decoded = android.util.Base64.decode(rawContent, android.util.Base64.DEFAULT).toString(Charsets.UTF_8)
-                            val boostProfile = CipherSuitesManager.parseSpeedBoostLine(decoded)
-                            if (boostProfile != null) {
-                                CipherSuitesManager.cacheProfile(boostProfile)
-                                LogUtil.i(AppConfig.TAG, "CipherSuites profile cached: v=${boostProfile.version}")
-                            }
+                    if (cleanGuids.isEmpty()) {
+                        cleanGuids = dataSource.getAllServerGuids().filter { guid ->
+                            KhorshidConfigGenerator.isCleanIPConfig(guid)
                         }
-                    } catch (e: Exception) {
-                        LogUtil.e(AppConfig.TAG, "Failed to parse CipherSuites", e)
                     }
 
-                    defaultSub.subscription.url = DEFAULT_SUBSCRIPTION_URL
-                    MmkvManager.encodeSubscription(defaultSub.guid, defaultSub.subscription)
-
-                    if (result.configCount == 0) {
-                        _uiState.update { it.copy(statusText = "No configs found!") }
+                    if (cleanGuids.isEmpty()) {
+                        _uiState.update { it.copy(
+                            showEmptyCategoryDialog = true,
+                            emptyCategoryName = category.label,
+                            isConnecting = false
+                        ) }
                         return@withContext
                     }
+                    guids = cleanGuids
+                    targetGroupId = cleanGroupId ?: uiState.value.selectedGroupId
+
                 } else {
-                    dataSource.updateConfigViaSubAll()
-                }
+                    _uiState.update { it.copy(isConnecting = true, status = MainStatus.TestProgress("Updating configs...")) }
 
-                setupGroupTab(forceRefresh = true).join()
-                refreshSelectedGuid()
+                    ensureSubscriptionConfigured()
 
-                val category = uiState.value.selectedCategory
-                val allGuids = dataSource.getAllServerGuids()
-                if (allGuids.isEmpty()) {
-                    _uiState.update { it.copy(statusText = "No configs found!") }
-                    return@withContext
-                }
+                    val existingSubs = dataSource.getSubscriptions()
+                    val defaultSub = existingSubs.find { it.subscription.remarks == DEFAULT_SUBSCRIPTION_REMARKS }
 
-                // Filter servers by selected category
-                val guids = if (category == ConfigCategory.ALL) {
-                    allGuids
-                } else {
-                    allGuids.filter { guid ->
-                        val profile = dataSource.decodeServerConfig(guid)
-                        profile != null && when (category) {
-                            ConfigCategory.BPB -> profile.remarks.contains("[BPB]", ignoreCase = true)
-                            ConfigCategory.NAHAN -> profile.remarks.contains("[NAHAN]", ignoreCase = true)
-                            ConfigCategory.OTHER -> !profile.remarks.contains("[BPB]", ignoreCase = true) &&
-                                                    !profile.remarks.contains("[NAHAN]", ignoreCase = true)
-                            ConfigCategory.ALL -> true
-                            ConfigCategory.CLEAN_IP -> profile.description?.contains("isCleanIpGenerated=true") == true
+                    if (defaultSub != null) {
+                        defaultSub.subscription.url = "$DEFAULT_SUBSCRIPTION_URL?t=${System.currentTimeMillis()}"
+                        MmkvManager.encodeSubscription(defaultSub.guid, defaultSub.subscription)
+
+                        _uiState.update { it.copy(status = MainStatus.TestProgress("Downloading configs...")) }
+
+                        val result = dataSource.updateConfigViaSub(defaultSub)
+
+                        try {
+                            val rawContent = HttpUtil.getUrlContent(UrlContentRequest(url = defaultSub.subscription.url))
+                            if (rawContent != null) {
+                                val decoded = android.util.Base64.decode(rawContent, android.util.Base64.DEFAULT).toString(Charsets.UTF_8)
+                                val boostProfile = CipherSuitesManager.parseSpeedBoostLine(decoded)
+                                if (boostProfile != null) {
+                                    CipherSuitesManager.cacheProfile(boostProfile)
+                                    LogUtil.i(AppConfig.TAG, "CipherSuites profile cached: v=${boostProfile.version}")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            LogUtil.e(AppConfig.TAG, "Failed to parse CipherSuites", e)
                         }
+
+                        defaultSub.subscription.url = DEFAULT_SUBSCRIPTION_URL
+                        MmkvManager.encodeSubscription(defaultSub.guid, defaultSub.subscription)
+
+                        if (result.configCount == 0) {
+                            _uiState.update { it.copy(status = MainStatus.TestProgress("No configs found!"), isConnecting = false) }
+                            return@withContext
+                        }
+                        targetGroupId = defaultSub.guid
+                    } else {
+                        dataSource.updateConfigViaSubAll()
+                        targetGroupId = uiState.value.selectedGroupId
                     }
+
+                    setupGroupTab(forceRefresh = true).join()
+                    refreshSelectedGuid()
+
+                    val allGroupGuids = dataSource.getServerGuidList(targetGroupId).ifEmpty { dataSource.getAllServerGuids() }
+                    if (allGroupGuids.isEmpty()) {
+                        _uiState.update { it.copy(status = MainStatus.TestProgress("No configs found!"), isConnecting = false) }
+                        return@withContext
+                    }
+
+                    val filteredGuids = when (category) {
+                        ConfigCategory.ALL -> allGroupGuids.filter { guid ->
+                            !KhorshidConfigGenerator.isCleanIPConfig(guid)
+                        }
+                        ConfigCategory.BPB -> allGroupGuids.filter { guid ->
+                            val profile = dataSource.decodeServerConfig(guid)
+                            profile?.remarks?.contains("[BPB]", ignoreCase = true) == true &&
+                                    !KhorshidConfigGenerator.isCleanIPConfig(guid)
+                        }
+                        ConfigCategory.NAHAN -> allGroupGuids.filter { guid ->
+                            val profile = dataSource.decodeServerConfig(guid)
+                            profile?.remarks?.contains("[NAHAN]", ignoreCase = true) == true &&
+                                    !KhorshidConfigGenerator.isCleanIPConfig(guid)
+                        }
+                        ConfigCategory.OTHER -> allGroupGuids.filter { guid ->
+                            val profile = dataSource.decodeServerConfig(guid)
+                            profile != null && !profile.remarks.contains("[BPB]", ignoreCase = true) &&
+                                    !profile.remarks.contains("[NAHAN]", ignoreCase = true) &&
+                                    !KhorshidConfigGenerator.isCleanIPConfig(guid)
+                        }
+                        ConfigCategory.CLEAN_IP -> allGroupGuids
+                    }
+
+                    if (filteredGuids.isEmpty()) {
+                        _uiState.update { it.copy(
+                            showEmptyCategoryDialog = true,
+                            emptyCategoryName = category.label,
+                            isConnecting = false
+                        ) }
+                        return@withContext
+                    }
+                    guids = filteredGuids
                 }
 
-                if (guids.isEmpty()) {
-                    _uiState.update { it.copy(
-                        showEmptyCategoryDialog = true,
-                        emptyCategoryName = category.label,
-                        isConnecting = false
-                    ) }
-                    return@withContext
-                }
+                _uiState.update { it.copy(status = MainStatus.TestProgress("Testing ${guids.size} ${category.label} servers...")) }
 
-                _uiState.update { it.copy(statusText = "Testing ${guids.size} ${category.label} servers...") }
-
-                // Clear previous results and trigger Real Delay test
                 dataSource.clearAllTestDelayResults(guids)
 
                 val finishDeferred = CompletableDeferred<Unit>()
@@ -1069,12 +1111,11 @@ class MainViewModel(
                 dataSource.sendMsg2TestService(
                     TestServiceMessage(
                         key = AppConfig.MSG_MEASURE_CONFIG_START,
-                        subscriptionId = uiState.value.selectedGroupId,
+                        subscriptionId = targetGroupId,
                         serverGuids = guids
                     )
                 )
 
-                // Wait up to 60 seconds, then check if at least one valid result exists
                 val startTime = System.currentTimeMillis()
                 while (true) {
                     if (finishDeferred.isCompleted) break
@@ -1095,7 +1136,6 @@ class MainViewModel(
 
                 eventCollector.cancel()
 
-                // Read results and pick the server with lowest valid delay
                 val candidates = guids.mapNotNull { guid ->
                     val affiliation = dataSource.decodeAffiliationInfo(guid)
                     val delay = affiliation?.testDelayMillis ?: 0L
@@ -1103,15 +1143,14 @@ class MainViewModel(
                 }.sortedBy { it.second }
 
                 if (candidates.isEmpty()) {
-                    _uiState.update { it.copy(statusText = "Connection timeout. No servers responded.") }
+                    _uiState.update { it.copy(status = MainStatus.TestProgress("Connection timeout. No servers responded."), isConnecting = false) }
                     return@withContext
                 }
 
                 val best = candidates.first()
-                _uiState.update { it.copy(statusText = "Connecting...", selectedGuid = best.first, isConnecting = false) }
+                _uiState.update { it.copy(status = MainStatus.TestProgress("Connecting..."), selectedGuid = best.first, isConnecting = false) }
                 dataSource.setSelectServer(best.first)
 
-                // Apply CipherSuites values BEFORE starting the service
                 CipherSuitesManager.applyBeforeConnect(best.first)
 
                 _requestConnectAfterPick.tryEmit(Unit)
@@ -1119,37 +1158,68 @@ class MainViewModel(
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "ConnectFastest failed", e)
-                _uiState.update { it.copy(statusText = "Error occurred!", isConnecting = false) }
+                _uiState.update { it.copy(status = MainStatus.TestProgress("Error occurred!"), isConnecting = false) }
             }
         } }
     }
 
+    private fun isCleanIpServer(server: ServersCache): Boolean {
+        return server.profile.remarks.contains(KhorshidConfigGenerator.CLEAN_TAG_PREFIX, ignoreCase = true) ||
+                server.profile.description?.contains(KhorshidConfigGenerator.CLEAN_FLAG) == true ||
+                server.profile.description?.contains("isCleanIpGenerated=true") == true ||
+                KhorshidConfigGenerator.isCleanIPConfig(server.guid)
+    }
+
     fun filterByCategory(servers: List<ServersCache>, category: ConfigCategory): List<ServersCache> {
         return when (category) {
-            ConfigCategory.ALL -> servers
-            ConfigCategory.BPB -> servers.filter { it.profile.remarks.contains("[BPB]", ignoreCase = true) }
-            ConfigCategory.NAHAN -> servers.filter { it.profile.remarks.contains("[NAHAN]", ignoreCase = true) }
+            ConfigCategory.ALL -> servers.filter { !isCleanIpServer(it) }
+            ConfigCategory.BPB -> servers.filter {
+                it.profile.remarks.contains("[BPB]", ignoreCase = true) &&
+                        !isCleanIpServer(it)
+            }
+            ConfigCategory.NAHAN -> servers.filter {
+                it.profile.remarks.contains("[NAHAN]", ignoreCase = true) &&
+                        !isCleanIpServer(it)
+            }
             ConfigCategory.OTHER -> servers.filter {
                 !it.profile.remarks.contains("[BPB]", ignoreCase = true) &&
-                !it.profile.remarks.contains("[NAHAN]", ignoreCase = true)
+                        !it.profile.remarks.contains("[NAHAN]", ignoreCase = true) &&
+                        !isCleanIpServer(it)
             }
-            ConfigCategory.CLEAN_IP -> servers.filter {
-                it.profile.description?.contains("isCleanIpGenerated=true") == true
+            ConfigCategory.CLEAN_IP -> {
+                val inCurrent = servers.filter {
+                    it.profile.remarks.contains("[Clean IP]", ignoreCase = true) ||
+                            it.profile.description?.contains("isKhorshidClean=true") == true ||
+                            it.profile.description?.contains("isCleanIpGenerated=true") == true ||
+                            KhorshidConfigGenerator.isCleanIPConfig(it.guid)
+                }
+                if (inCurrent.isNotEmpty()) {
+                    inCurrent
+                } else {
+                    val cleanSubId = getCleanIpGroupId()
+                    if (!cleanSubId.isNullOrEmpty()) {
+                        dataSource.getServerGuidList(cleanSubId).mapNotNull { guid ->
+                            val profile = dataSource.decodeServerConfig(guid) ?: return@mapNotNull null
+                            val aff = dataSource.decodeAffiliationInfo(guid)
+                            ServersCache(guid, profile, aff?.testDelayMillis ?: 0L)
+                        }
+                    } else {
+                        emptyList()
+                    }
+                }
             }
         }
     }
 
-    /**
-     * Generate Clean IP configs from subscription configs + IP scan results.
-     */
     fun generateCleanIPs(numPerConfig: Int = 3) {
         launchLoading { withContext(ioDispatcher) {
             try {
-                val scanResults = IpScannerManager.getCachedResults()
+                val lastSessionId = IpScanPersistence.getLastSessionId()
+                val scanResults = if (lastSessionId != null) IpScanPersistence.loadResults(lastSessionId) else emptyList()
                 LogUtil.i(AppConfig.TAG, "CleanIP: scanResults count = ${scanResults.size}")
 
                 if (scanResults.isEmpty()) {
-                    _uiState.update { it.copy(statusText = "No scan results — run IP Scan first") }
+                    _uiState.update { it.copy(status = MainStatus.TestProgress("No scan results — run IP Scan first")) }
                     toast("No scan results — run IP Scan first")
                     return@withContext
                 }
@@ -1158,18 +1228,18 @@ class MainViewModel(
                 LogUtil.i(AppConfig.TAG, "CleanIP: source config GUIDs count = ${subGuids.size}")
 
                 if (subGuids.isEmpty()) {
-                    _uiState.update { it.copy(statusText = "No source configs found") }
+                    _uiState.update { it.copy(status = MainStatus.TestProgress("No source configs found")) }
                     toast("No source configs found — check your subscription list")
                     return@withContext
                 }
 
-                val generated = CleanIPGenerator.generateCleanIPConfigs(subGuids, scanResults, numPerConfig)
-                if (generated.isNotEmpty()) {
-                    _uiState.update { it.copy(statusText = "Generated ${generated.size} Clean IP configs") }
-                    toast("Generated ${generated.size} Clean IP configs")
+                val generated = KhorshidConfigGenerator.cloneConfigsWithCleanIps(subGuids, scanResults, numPerConfig)
+                if (generated > 0) {
+                    _uiState.update { it.copy(status = MainStatus.TestProgress("Generated $generated Clean IP configs")) }
+                    toast("Generated $generated Clean IP configs")
                     setupGroupTab(forceRefresh = true)
                 } else {
-                    _uiState.update { it.copy(statusText = "No matching validated IPs for your configs' SNI") }
+                    _uiState.update { it.copy(status = MainStatus.TestProgress("No matching validated IPs for your configs' SNI")) }
                     toast("No matching validated IPs for your configs' SNI")
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -1186,7 +1256,7 @@ class MainViewModel(
             if (dataSource.getAutoSortAfterTest()) sortByTestResultsInternal()
             cacheMutex.withLock { groupDataCache.clear() }
             testingGroupId = null
-            _uiState.update { it.copy(isTesting = false, statusText = if (it.isRunning) connectedText else disconnectedText) }
+            _uiState.update { it.copy(isTesting = false, status = if (it.isRunning) MainStatus.Connected else MainStatus.Disconnected) }
             reloadAllGroups(_uiState.value.groups.map { it.id })
         }
     }
@@ -1215,13 +1285,12 @@ class MainViewModel(
         }
     }
 
-    // ---------- Running state ----------
     private fun updateRunningState(running: Boolean, clearTestingText: Boolean = true) {
         _uiState.update {
             it.copy(
                 isRunning = running,
-                statusText = if (!clearTestingText && it.isTesting) it.statusText
-                else if (running) connectedText else disconnectedText,
+                status = if (!clearTestingText && it.isTesting) it.status
+                else if (running) MainStatus.Connected else MainStatus.Disconnected,
                 isConnecting = false,
                 currentPingDelay = if (running) it.currentPingDelay else -1L
             )
@@ -1233,7 +1302,6 @@ class MainViewModel(
         }
     }
 
-    // ---------- Connection timer & speed ----------
     private fun startConnectionTimer() {
         connectionTimerJob?.cancel()
         connectedTimestamp = System.currentTimeMillis()
@@ -1250,14 +1318,12 @@ class MainViewModel(
             while (true) {
                 val currentTime = System.currentTimeMillis()
 
-                // Calculate connection duration
                 val elapsedSeconds = (currentTime - connectedTimestamp) / 1000
                 val hours = elapsedSeconds / 3600
                 val minutes = (elapsedSeconds % 3600) / 60
                 val seconds = elapsedSeconds % 60
                 val formattedTime = String.format("%02d:%02d:%02d", hours, minutes, seconds)
 
-                // Calculate CUMULATIVE upload/download (total since connection start)
                 val currentRxBytes = TrafficStats.getUidRxBytes(uid)
                 val currentTxBytes = TrafficStats.getUidTxBytes(uid)
 
@@ -1269,7 +1335,6 @@ class MainViewModel(
                     totalUploaded = maxOf(0L, currentTxBytes - initialTxBytes)
                 }
 
-                // Update UI State
                 _uiState.update { currentState ->
                     currentState.copy(
                         connectionDurationText = formattedTime,
@@ -1318,7 +1383,6 @@ class MainViewModel(
         super.onCleared()
     }
 
-    // ---------- Factory ----------
     class Factory(private val application: Application, private val dataSource: MainDataSource) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

@@ -1,262 +1,571 @@
 package com.v2ray.ang.ui.ipscanner
 
 import android.app.Application
+import android.net.ConnectivityManager
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.v2ray.ang.core.LauncherManager
 import com.v2ray.ang.handler.MmkvManager
-import com.v2ray.ang.reachability.CleanIPGenerator
-import com.v2ray.ang.reachability.CloudflareIpPool
-import com.v2ray.ang.reachability.IpScanPersistence
-import com.v2ray.ang.reachability.IpScannerManager
-import com.v2ray.ang.util.LogUtil
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import java.util.UUID
+import com.v2ray.ang.reachability.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicInteger
 
 class IpScannerViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val TAG = "IpScannerVM"
+    enum class IpSourceType { RANDOM_POOL, CUSTOM_IPS }
+
+    data class ConfigSummary(
+        val guid: String,
+        val remarks: String,
+        val server: String,
+        val port: String,
+        val isCompatible: Boolean,
+        val reason: String
+    )
 
     data class UiState(
         val isScanning: Boolean = false,
-        val isGenerating: Boolean = false, // اضافه شدن متغیر برای برطرف شدن ارور Unresolved reference
+        val isTestingSpeed: Boolean = false,
+        val isGenerating: Boolean = false,
         val isCooldown: Boolean = false,
         val cooldownSeconds: Int = 0,
-        val scanPhase: Int = 0,
+        val scanningNeighborIp: String? = null,
+        val subnetTestedCount: Int = 0,
+        val subnetTotalCount: Int = 0,
+        val subnetWhiteCount: Int = 0,
+        val subnetProgressPercent: Float = 0f,
+        val operator: KhorshidIspDetector.Operator = KhorshidIspDetector.Operator.GENERAL,
+
+        val ipSource: IpSourceType = IpSourceType.RANDOM_POOL,
+        val customIpText: String = "",
+        val targetCount: String = "1,000",
+        val customTargetCount: String = "",
+        val workers: String = "100 (Balanced)",
+        val customWorkers: String = "",
+        val timeout: String = "5s (Default)",
+        val customTimeout: String = "",
+        val selectedPorts: Set<String> = setOf("443"),
+        val requireWebSocket: Boolean = true,
+        val autoScanNeighbors: Boolean = false,
+        val autoGenerateConfigs: Boolean = false,
+
+        val scanResults: List<KhorshidScanEngine.EndpointResult> = emptyList(),
+        val userConfigs: List<ConfigSummary> = emptyList(),
+        val selectedGuids: Set<String> = emptySet(),
+        val ipsPerConfig: Int = 1,
+        val ipsPerConfigCustom: String = "",
+        val useManualCleanIps: Boolean = false,
+        val manualCleanIpText: String = "",
+
+        val progressText: String = "",
+        val progressPercent: Float = 0f,
         val testedCount: Int = 0,
-        val greenCount: Int = 0,
+        val whiteCount: Int = 0,
         val failedCount: Int = 0,
-        val scanResults: List<IpScannerManager.ScanResult> = emptyList(),
-        val optimizedIps: Map<String, List<IpScannerManager.ScanResult>> = emptyMap(),
-        val selectedConfigGuids: Set<String> = emptySet(),
-        val topN: Int = 20,
-        val scanStatus: String = "Ready",
-        val sessionId: String = UUID.randomUUID().toString(),
-        val toastMessage: String? = null
+        val statusMessage: String = "Ready"
     )
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    fun clearToastMessage() {
-        _uiState.update { it.copy(toastMessage = null) }
+    private val _navigationEvent = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val navigationEvent: SharedFlow<Int> = _navigationEvent.asSharedFlow()
+
+    private val _toastEvent = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val toastEvent: SharedFlow<String> = _toastEvent.asSharedFlow()
+
+    private var vpnWatchCallback: ConnectivityManager.NetworkCallback? = null
+    private var cooldownJob: Job? = null
+    private var subnetJob: Job? = null
+    private var isStartingScan = false
+
+    private var previousScanResults: List<KhorshidScanEngine.EndpointResult> = emptyList()
+
+    init {
+        detectOperator()
+        loadSavedResults()
+        loadUserConfigs()
+        observeScanEvents()
     }
 
-    private fun startCooldownTimer(seconds: Int = 10) {
-        viewModelScope.launch(Dispatchers.IO) {
+    override fun onCleared() {
+        super.onCleared()
+        unregisterVpnWatch()
+        cooldownJob?.cancel()
+        subnetJob?.cancel()
+    }
+
+    private fun unregisterVpnWatch() {
+        vpnWatchCallback?.let { VpnStateGuard.unregister(getApplication(), it) }
+        vpnWatchCallback = null
+    }
+
+    private fun startCooldown(seconds: Int = 5) {
+        cooldownJob?.cancel()
+        cooldownJob = viewModelScope.launch(Dispatchers.Main) {
             _uiState.update { it.copy(isCooldown = true, cooldownSeconds = seconds) }
-            for (i in seconds downTo 1) {
-                _uiState.update { it.copy(cooldownSeconds = i) }
+            for (sec in seconds downTo 1) {
+                _uiState.update { it.copy(cooldownSeconds = sec) }
                 delay(1000)
             }
             _uiState.update { it.copy(isCooldown = false, cooldownSeconds = 0) }
         }
     }
 
-    fun loadLastSession() {
+    private fun loadSavedResults() {
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val lastSessionId = IpScanPersistence.getLastSessionId() ?: return@launch
-                val results = IpScanPersistence.loadResults(lastSessionId)
-                if (results.isNotEmpty()) {
-                    _uiState.update {
-                        it.copy(
-                            scanResults = results,
-                            sessionId = lastSessionId,
-                            scanStatus = "Loaded ${results.size} results from last session"
-                        )
-                    }
+            val sessionId = IpScanPersistence.getLastSessionId() ?: return@launch
+            val saved = IpScanPersistence.loadResults(sessionId)
+            if (saved.isNotEmpty()) {
+                _uiState.update {
+                    it.copy(scanResults = saved, statusMessage = "Loaded ${saved.size} results from last scan")
                 }
-            } catch (e: Exception) {
-                LogUtil.e(TAG, "loadLastSession failed", e)
             }
         }
     }
 
-    fun startTcpScan(ports: List<Int>, timeoutMs: Int, concurrency: Int) {
-        if (_uiState.value.isScanning || _uiState.value.isCooldown) return
+    fun detectOperator() {
+        val op = KhorshidIspDetector.detect(getApplication())
+        _uiState.update { it.copy(operator = op) }
+    }
 
-        val safeTargetCount = _uiState.value.topN.coerceAtLeast(10)
-        val safeConcurrency = concurrency.coerceAtLeast(1)
-        val safePorts = ports.ifEmpty { listOf(443) }
+    fun setIpSource(type: IpSourceType) = _uiState.update { it.copy(ipSource = type) }
+    fun setCustomIpText(text: String) = _uiState.update { it.copy(customIpText = text) }
+    fun setTargetCount(count: String) = _uiState.update { it.copy(targetCount = count) }
+    fun setCustomTargetCount(count: String) = _uiState.update { it.copy(customTargetCount = count) }
+    fun setWorkers(workers: String) = _uiState.update { it.copy(workers = workers) }
+    fun setCustomWorkers(workers: String) = _uiState.update { it.copy(customWorkers = workers) }
+    fun setTimeout(timeout: String) = _uiState.update { it.copy(timeout = timeout) }
+    fun setCustomTimeout(timeout: String) = _uiState.update { it.copy(customTimeout = timeout) }
+    fun setSelectedPorts(ports: Set<String>) = _uiState.update { it.copy(selectedPorts = ports) }
+    fun setRequireWebSocket(enabled: Boolean) = _uiState.update { it.copy(requireWebSocket = enabled) }
+    fun setAutoScanNeighbors(enabled: Boolean) = _uiState.update { it.copy(autoScanNeighbors = enabled) }
+    fun setAutoGenerateConfigs(enabled: Boolean) = _uiState.update { it.copy(autoGenerateConfigs = enabled) }
+    fun setIpsPerConfig(count: Int) = _uiState.update { it.copy(ipsPerConfig = count, ipsPerConfigCustom = "") }
+    fun setIpsPerConfigCustom(count: String) = _uiState.update { it.copy(ipsPerConfigCustom = count, ipsPerConfig = count.toIntOrNull()?.coerceIn(1, 100) ?: 1) }
 
-        startCooldownTimer(10)
+    fun setUseManualCleanIps(enabled: Boolean) = _uiState.update { it.copy(useManualCleanIps = enabled) }
+    fun setManualCleanIpText(text: String) = _uiState.update { it.copy(manualCleanIpText = text) }
 
+    fun loadUserConfigs() {
         viewModelScope.launch(Dispatchers.IO) {
-            val ips = CloudflareIpPool.generateRandomIps(safeTargetCount)
-            if (ips.isEmpty()) {
-                _uiState.update { it.copy(scanStatus = "No IPs to scan") }
-                return@launch
-            }
+            val allGuids = MmkvManager.decodeAllServerList()
+            val list = allGuids.mapNotNull { guid ->
+                val cfg = MmkvManager.decodeServerConfig(guid) ?: return@mapNotNull null
+                if (KhorshidConfigGenerator.isCleanIPConfig(guid)) return@mapNotNull null
 
-            val newSessionId = UUID.randomUUID().toString()
-            _uiState.update {
-                it.copy(
-                    isScanning = true, scanPhase = 1, scanResults = emptyList(),
-                    testedCount = 0, greenCount = 0, failedCount = 0,
-                    scanStatus = "Scanning ${ips.size} IPs...", sessionId = newSessionId
+                val analysis = KhorshidConfigAnalyzer.analyze(cfg)
+                ConfigSummary(
+                    guid = guid,
+                    remarks = cfg.remarks.orEmpty(),
+                    server = cfg.server.orEmpty(),
+                    port = cfg.serverPort.orEmpty(),
+                    isCompatible = analysis.isCompatible,
+                    reason = analysis.reason
                 )
             }
-
-            IpScannerManager.onScanProgress = { tested, green, failed ->
-                _uiState.update { it.copy(testedCount = tested, greenCount = green, failedCount = failed) }
-            }
-
-            IpScannerManager.onScanComplete = { results ->
-                viewModelScope.launch(Dispatchers.IO) {
-                    try {
-                        IpScanPersistence.saveResults(newSessionId, results)
-                    } catch (e: Exception) {
-                        LogUtil.e(TAG, "Failed to save scan results", e)
-                    }
-                    _uiState.update {
-                        it.copy(
-                            isScanning = false,
-                            scanPhase = 0,
-                            scanResults = results,
-                            scanStatus = "Found ${results.size} reachable IPs",
-                            toastMessage = "Scan complete: ${results.size} reachable IPs found."
-                        )
-                    }
-                }
-            }
-
-            IpScannerManager.startTcpScan(ips, safePorts, timeoutMs, safeConcurrency, viewModelScope)
+            _uiState.update { it.copy(userConfigs = list, selectedGuids = emptySet()) }
         }
     }
 
-    fun startTlsValidation(configPort: Int, sni: String) {
-        if (_uiState.value.isScanning || _uiState.value.isCooldown) return
-
-        if (_uiState.value.scanResults.isEmpty()) {
-            _uiState.update { it.copy(scanStatus = "Run TCP scan first") }
-            return
+    fun toggleConfigSelection(guid: String) {
+        _uiState.update { state ->
+            val set = state.selectedGuids.toMutableSet()
+            if (set.contains(guid)) set.remove(guid) else set.add(guid)
+            state.copy(selectedGuids = set)
         }
+    }
 
-        startCooldownTimer(10)
-
-        _uiState.update { it.copy(isScanning = true, scanPhase = 2, scanStatus = "Validating TLS with SNI: $sni...") }
-
-        IpScannerManager.onScanProgress = { tested, green, failed ->
-            _uiState.update { it.copy(testedCount = tested, greenCount = green, failedCount = failed) }
+    fun selectAllConfigs(selectAll: Boolean) {
+        _uiState.update { state ->
+            val set = if (selectAll) state.userConfigs.filter { it.isCompatible }.map { it.guid }.toSet() else emptySet()
+            state.copy(selectedGuids = set)
         }
+    }
 
-        IpScannerManager.onScanComplete = { results ->
-            viewModelScope.launch(Dispatchers.IO) {
-                try {
-                    IpScanPersistence.saveResults(_uiState.value.sessionId, results)
-                } catch (e: Exception) {
-                    LogUtil.e(TAG, "Failed to save TLS validation results", e)
-                }
+    private fun observeScanEvents() {
+        viewModelScope.launch {
+            KhorshidScanEngine.eventFlow.collect { event ->
+                val percent = if (event.total > 0) event.tested.toFloat() / event.total else 0f
                 _uiState.update {
                     it.copy(
-                        isScanning = false,
-                        scanPhase = 0,
-                        scanResults = results,
-                        scanStatus = "Validated ${results.size} IPs with TLS/SNI"
+                        progressPercent = percent.coerceIn(0f, 1f),
+                        testedCount = event.tested,
+                        whiteCount = event.green,
+                        failedCount = event.failed,
+                        progressText = "${event.tested} tested | ${event.green} white | ${event.failed} failed"
                     )
                 }
             }
         }
+    }
 
-        IpScannerManager.startTlsValidation(_uiState.value.scanResults, configPort, sni, _uiState.value.topN, viewModelScope)
+    fun startDiscovery() {
+        val state = _uiState.value
+        if (state.isScanning || state.isCooldown || isStartingScan || state.scanningNeighborIp != null) return
+
+        isStartingScan = true
+        startCooldown(5)
+
+        viewModelScope.launch {
+            try {
+                val app = getApplication<Application>()
+                _uiState.update { it.copy(statusMessage = "Preparing network...") }
+
+                LauncherManager.stopService(app)
+                delay(600)
+
+                if (VpnStateGuard.isForeignVpnActive(app)) {
+                    _uiState.update { it.copy(statusMessage = "Foreign VPN active") }
+                    _toastEvent.tryEmit("Another VPN is running. Please disconnect it.")
+                    return@launch
+                }
+
+                startDiscoveryInternal()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(statusMessage = "Error: ${e.message}") }
+            } finally {
+                isStartingScan = false
+            }
+        }
+    }
+
+    private fun startDiscoveryInternal() {
+        val state = _uiState.value
+        previousScanResults = state.scanResults
+
+        val targetNum = when (state.targetCount) {
+            "500" -> 500
+            "1,000" -> 1000
+            "5,000" -> 5000
+            "20,000" -> 20000
+            else -> state.customTargetCount.replace(",", "").toIntOrNull()?.coerceIn(10, 50000) ?: 1000
+        }
+
+        val workerNum = when {
+            state.workers.startsWith("50") -> 50
+            state.workers.startsWith("100") -> 100
+            state.workers.startsWith("200") -> 200
+            else -> state.customWorkers.toIntOrNull()?.coerceIn(5, 300) ?: 100
+        }
+
+        val timeoutMs = when {
+            state.timeout.startsWith("2s") -> 2000
+            state.timeout.startsWith("3s") -> 3000
+            state.timeout.startsWith("5s") -> 5000
+            else -> (state.customTimeout.removeSuffix("s").toIntOrNull()?.coerceIn(1, 30) ?: 5) * 1000
+        }
+
+        val ports = state.selectedPorts.mapNotNull { it.toIntOrNull() }.ifEmpty { listOf(443) }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val ipsToScan = if (state.ipSource == IpSourceType.CUSTOM_IPS && state.customIpText.isNotBlank()) {
+                state.customIpText.lines().map { it.trim() }.filter { it.isNotBlank() }
+            } else {
+                KhorshidConstants.generateRandomIps(targetNum, state.operator.ranges)
+            }
+
+            _uiState.update {
+                it.copy(
+                    isScanning = true,
+                    scanResults = emptyList(),
+                    testedCount = 0,
+                    whiteCount = 0,
+                    failedCount = 0,
+                    statusMessage = "Scanning ${ipsToScan.size} Cloudflare endpoints..."
+                )
+            }
+
+            unregisterVpnWatch()
+            vpnWatchCallback = VpnStateGuard.registerVpnAppearedCallback(getApplication()) {
+                if (_uiState.value.isScanning) {
+                    handlePartialStop(
+                        statusMsg = "VPN detected — scan stopped.",
+                        toastMsg = "VPN connected mid-scan; scan stopped and discovered endpoints saved."
+                    )
+                }
+            }
+
+            KhorshidScanEngine.startDiscovery(
+                ips = ipsToScan,
+                ports = ports,
+                workers = workerNum,
+                timeoutMs = timeoutMs,
+                requireWebSocket = state.requireWebSocket,
+                autoScanNeighbors = state.autoScanNeighbors,
+                scope = viewModelScope
+            ) { results ->
+                unregisterVpnWatch()
+
+                viewModelScope.launch(Dispatchers.IO) {
+                    IpScanPersistence.saveResults("khorshid_session", results)
+                }
+
+                _uiState.update {
+                    it.copy(
+                        isScanning = false,
+                        scanResults = results,
+                        statusMessage = if (results.isNotEmpty()) "Done. ${results.size} white IPs found." else "Scan finished. No clean IPs found."
+                    )
+                }
+                startCooldown(5)
+
+                if (results.isEmpty()) {
+                    _toastEvent.tryEmit("Scan finished: no healthy IPs found.")
+                    return@startDiscovery
+                }
+
+                if (state.autoGenerateConfigs) {
+                    val compatibleConfigs = state.userConfigs.filter { it.isCompatible }
+                    if (compatibleConfigs.isNotEmpty()) {
+                        viewModelScope.launch(Dispatchers.IO) {
+                            val count = KhorshidConfigGenerator.cloneConfigsWithCleanIps(
+                                selectedGuids = compatibleConfigs.map { it.guid },
+                                cleanEndpoints = results,
+                                ipsPerConfig = state.ipsPerConfig
+                            )
+                            _toastEvent.tryEmit("Auto-generated: $count clean configs in 'Clean IP Configs'")
+                        }
+                    } else {
+                        _toastEvent.tryEmit("${results.size} white IPs found, but no compatible configs for auto-generation.")
+                    }
+                } else {
+                    _toastEvent.tryEmit("${results.size} white IPs discovered!")
+                    _navigationEvent.tryEmit(1)
+                }
+            }
+        }
+    }
+
+    private fun handlePartialStop(statusMsg: String, toastMsg: String) {
+        unregisterVpnWatch()
+        KhorshidScanEngine.stopDiscovery()
+
+        val partialHealthy = KhorshidScanEngine.getDiscoveredHealthyResults()
+        val mergedResults = (partialHealthy + previousScanResults)
+            .distinctBy { "${it.ip}:${it.port}" }
+            .sortedBy { it.latencyMs }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            if (mergedResults.isNotEmpty()) {
+                IpScanPersistence.saveResults("khorshid_session", mergedResults)
+            }
+        }
+
+        _uiState.update {
+            it.copy(
+                isScanning = false,
+                scanResults = mergedResults,
+                statusMessage = statusMsg
+            )
+        }
+
+        _toastEvent.tryEmit(toastMsg)
+        startCooldown(5)
     }
 
     fun stopScan() {
-        IpScannerManager.stopScan()
-        _uiState.update { it.copy(isScanning = false, scanPhase = 0, scanStatus = "Stopped — ${_uiState.value.scanResults.size} results saved") }
-    }
+        if (_uiState.value.isCooldown) return
 
-    fun saveOptimizedIps(configGuid: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                IpScannerManager.saveOptimizedIps(configGuid, _uiState.value.scanResults.filter { it.tlsOk })
-            } catch (e: Exception) {
-                LogUtil.e(TAG, "saveOptimizedIps failed", e)
-            }
+        val newWhiteCount = KhorshidScanEngine.getDiscoveredHealthyResults().size
+        val toast = if (newWhiteCount > 0) {
+            "Scan stopped. $newWhiteCount new white IPs added."
+        } else {
+            "Scan stopped."
         }
+
+        handlePartialStop(
+            statusMsg = "Scan stopped.",
+            toastMsg = toast
+        )
     }
 
-    fun setTopN(n: Int) {
-        _uiState.update { it.copy(topN = n.coerceAtLeast(10)) }
-    }
-
-    fun generateCleanIPs(numPerConfig: Int) {
-        val scanResults = _uiState.value.scanResults
-        if (scanResults.isEmpty()) {
-            _uiState.update { it.copy(scanStatus = "No scan results — run IP Scan first") }
+    fun scanNeighbors(baseIp: String) {
+        val state = _uiState.value
+        if (state.isScanning || state.scanningNeighborIp != null || state.isCooldown) {
+            _toastEvent.tryEmit("Another scan task is running.")
             return
         }
 
-        if (_uiState.value.isGenerating) return
+        val neighbors = KhorshidNeighborScanner.getSubnet24Neighbors(baseIp)
+        if (neighbors.isEmpty()) return
 
-        val safeNum = numPerConfig.coerceIn(1, 50)
+        val ports = state.selectedPorts.mapNotNull { it.toIntOrNull() }.ifEmpty { listOf(443) }
+        val timeoutMs = when {
+            state.timeout.startsWith("2s") -> 2000
+            state.timeout.startsWith("3s") -> 3000
+            state.timeout.startsWith("5s") -> 5000
+            else -> (state.customTimeout.removeSuffix("s").toIntOrNull()?.coerceIn(1, 30) ?: 5) * 1000
+        }
 
-        viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isGenerating = true, scanStatus = "Generating Clean IP configs...") }
+        val totalTasks = neighbors.size * ports.size
+        val testedCounter = AtomicInteger(0)
+        val whiteCounter = AtomicInteger(0)
 
-            try {
-                val serverList = MmkvManager.decodeAllServerList()
-                val generated = CleanIPGenerator.generateCleanIPConfigs(
-                    sourceConfigs = serverList,
-                    scanResults = scanResults,
-                    n = safeNum
-                )
+        _uiState.update {
+            it.copy(
+                scanningNeighborIp = baseIp,
+                subnetTestedCount = 0,
+                subnetTotalCount = totalTasks,
+                subnetWhiteCount = 0,
+                subnetProgressPercent = 0f,
+                statusMessage = "Scanning /24 neighbors for $baseIp..."
+            )
+        }
+        _toastEvent.tryEmit("Subnet /24 scan started for $baseIp...")
 
-                _uiState.update {
-                    val statusText = if (safeNum != numPerConfig) {
-                        "Limited to max 50/config. Generated ${generated.size} configs."
-                    } else {
-                        "Generated ${generated.size} Clean IP configs"
-                    }
+        subnetJob?.cancel()
+        subnetJob = viewModelScope.launch(Dispatchers.IO) {
+            val healthyFound = ConcurrentLinkedQueue<KhorshidScanEngine.EndpointResult>()
+            val semaphore = Semaphore(25)
 
-                    if (generated.isNotEmpty()) {
-                        it.copy(scanStatus = statusText, isGenerating = false)
-                    } else {
-                        it.copy(scanStatus = "No configs found — check subscription", isGenerating = false)
+            val jobs = neighbors.flatMap { ip ->
+                ports.map { port ->
+                    async {
+                        semaphore.withPermit {
+                            if (!isActive) return@withPermit
+
+                            val probe = KhorshidProber.probeEndpoint(
+                                ip = ip,
+                                port = port,
+                                host = KhorshidConstants.DEFAULT_CF_HOST,
+                                timeoutMs = timeoutMs,
+                                requireWebSocket = state.requireWebSocket
+                            )
+                            if (probe.success) {
+                                val item = KhorshidScanEngine.EndpointResult(
+                                    ip = ip,
+                                    port = port,
+                                    latencyMs = probe.ttfbMs,
+                                    colo = probe.colo,
+                                    isHealthy = true
+                                )
+                                healthyFound.add(item)
+                                whiteCounter.incrementAndGet()
+                            }
+
+                            val currentTested = testedCounter.incrementAndGet()
+                            val currentWhite = whiteCounter.get()
+                            val progress = if (totalTasks > 0) currentTested.toFloat() / totalTasks else 0f
+
+                            _uiState.update {
+                                it.copy(
+                                    subnetTestedCount = currentTested,
+                                    subnetWhiteCount = currentWhite,
+                                    subnetProgressPercent = progress.coerceIn(0f, 1f)
+                                )
+                            }
+                        }
                     }
                 }
-            } catch (e: Exception) {
-                LogUtil.e(TAG, "generateCleanIPs failed", e)
-                _uiState.update { it.copy(scanStatus = "Failed to generate configs", isGenerating = false) }
+            }
+
+            jobs.awaitAll()
+
+            val healthyList = healthyFound.toList()
+            val currentList = _uiState.value.scanResults
+            val mergedList = (healthyList + currentList)
+                .distinctBy { "${it.ip}:${it.port}" }
+                .sortedBy { it.latencyMs }
+
+            IpScanPersistence.saveResults("khorshid_session", mergedList)
+
+            withContext(Dispatchers.Main) {
+                _uiState.update {
+                    it.copy(
+                        scanningNeighborIp = null,
+                        subnetTestedCount = 0,
+                        subnetTotalCount = 0,
+                        subnetWhiteCount = 0,
+                        subnetProgressPercent = 0f,
+                        scanResults = mergedList,
+                        statusMessage = "Subnet scan finished. ${healthyList.size} white IPs added."
+                    )
+                }
+
+                if (healthyList.isNotEmpty()) {
+                    _toastEvent.tryEmit("${healthyList.size} white IPs added from subnet!")
+                } else {
+                    _toastEvent.tryEmit("No white IPs found in this subnet.")
+                }
             }
         }
     }
 
-    fun clearResults() {
+    fun runSpeedTestOnTopResults() {
+        val currentResults = _uiState.value.scanResults
+        if (currentResults.isEmpty() || _uiState.value.isTestingSpeed) return
+
+        _uiState.update {
+            it.copy(isTestingSpeed = true, statusMessage = "Testing download speed...")
+        }
+
+        KhorshidScanEngine.runSpeedTestShortlist(
+            allResults = currentResults,
+            topCount = 20,
+            scope = viewModelScope
+        ) { ranked ->
+            viewModelScope.launch(Dispatchers.IO) {
+                IpScanPersistence.saveResults("khorshid_session", ranked)
+            }
+            _uiState.update {
+                it.copy(isTestingSpeed = false, scanResults = ranked, statusMessage = "Speed test finished.")
+            }
+            _toastEvent.tryEmit("Speed test completed on top 20 endpoints.")
+        }
+    }
+
+    fun generateCleanConfigs(onFinish: ((Int) -> Unit)? = null) {
+        val state = _uiState.value
+        if (state.selectedGuids.isEmpty() || state.isGenerating) return
+
+        val endpointsToUse: List<KhorshidScanEngine.EndpointResult> = if (state.useManualCleanIps && state.manualCleanIpText.isNotBlank()) {
+            state.manualCleanIpText.lines()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .map { line ->
+                    val parts = line.split(":")
+                    val ip = parts[0].trim()
+                    val port = if (parts.size > 1) parts[1].trim().toIntOrNull() ?: 443 else 443
+                    KhorshidScanEngine.EndpointResult(
+                        ip = ip,
+                        port = port,
+                        latencyMs = 0L,
+                        colo = "MANUAL",
+                        isHealthy = true
+                    )
+                }
+        } else {
+            state.scanResults
+        }
+
+        if (endpointsToUse.isEmpty()) {
+            _toastEvent.tryEmit("No clean IPs available to generate configs.")
+            return
+        }
+
+        _uiState.update { it.copy(isGenerating = true) }
+
         viewModelScope.launch(Dispatchers.IO) {
-            try {
-                IpScanPersistence.clearAll()
-                _uiState.update { it.copy(scanResults = emptyList(), scanStatus = "Results cleared") }
-            } catch (e: Exception) {
-                LogUtil.e(TAG, "clearResults failed", e)
+            val count = KhorshidConfigGenerator.cloneConfigsWithCleanIps(
+                selectedGuids = state.selectedGuids.toList(),
+                cleanEndpoints = endpointsToUse,
+                ipsPerConfig = state.ipsPerConfig
+            )
+
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(isGenerating = false) }
+                if (count > 0) {
+                    _toastEvent.tryEmit("Generated $count clean configs in 'Clean IP Configs'")
+                } else {
+                    _toastEvent.tryEmit("Error: No configs generated. Check source configs.")
+                }
+                onFinish?.invoke(count)
             }
-        }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        try {
-            IpScannerManager.stopScan()
-            IpScannerManager.onScanProgress = null
-            IpScannerManager.onScanComplete = null
-        } catch (e: Exception) {
-            LogUtil.e(TAG, "onCleared cleanup failed", e)
-        }
-    }
-
-    class Factory(private val application: Application) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            if (modelClass.isAssignableFrom(IpScannerViewModel::class.java)) return IpScannerViewModel(application) as T
-            throw IllegalArgumentException("Unknown ViewModel class")
         }
     }
 }

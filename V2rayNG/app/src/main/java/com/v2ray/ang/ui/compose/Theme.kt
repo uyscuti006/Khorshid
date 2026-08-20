@@ -1,14 +1,11 @@
 package com.v2ray.ang.ui.compose
 
 import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -18,7 +15,6 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.v2ray.ang.AppConfig
@@ -27,8 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-// ── Dark Scheme (یک‌دست با SimpleMainScreen) ─────────────────────────
-private val AppDarkColorScheme = darkColorScheme(
+val AppDarkColorScheme = darkColorScheme(
     primary = Color(0xFFADC6FF),
     onPrimary = Color(0xFF002E69),
     primaryContainer = Color(0xFF004494),
@@ -43,7 +38,7 @@ private val AppDarkColorScheme = darkColorScheme(
     errorContainer = Color(0xFF93000A),
     onError = Color(0xFF690005),
     onErrorContainer = Color(0xFFFFDAD6),
-    background = Color(0xFF111111), // #111111
+    background = Color(0xFF111111),
     onBackground = Color(0xFFE0E0E0),
     surface = Color(0xFF1A1A1A),
     onSurface = Color(0xFFE0E0E0),
@@ -58,8 +53,7 @@ private val AppDarkColorScheme = darkColorScheme(
     surfaceContainerHighest = Color(0xFF303030)
 )
 
-// ── Light Scheme (تم استخوانی / ملایم یک‌دست با SimpleMainScreen) ──────
-private val AppLightColorScheme = lightColorScheme(
+val AppLightColorScheme = lightColorScheme(
     primary = Color(0xFF1D70F5),
     onPrimary = Color.White,
     primaryContainer = Color(0xFFDCE8FF),
@@ -74,7 +68,7 @@ private val AppLightColorScheme = lightColorScheme(
     errorContainer = Color(0xFFFFDAD6),
     onError = Color.White,
     onErrorContainer = Color(0xFF410002),
-    background = Color(0xFFF5F3EE), // رنگ استخوانی #F5F3EE
+    background = Color(0xFFF5F3EE),
     onBackground = Color(0xFF1C1B1F),
     surface = Color(0xFFFAF8F5),
     onSurface = Color(0xFF1C1B1F),
@@ -89,7 +83,6 @@ private val AppLightColorScheme = lightColorScheme(
     surfaceContainerHighest = Color(0xFFDDDAD2)
 )
 
-// ── Semantic Colors ───────────────────────────────────────────────────
 val colorPing = Color(0xFF2ECC71)
 val colorPingRed = Color(0xFFE5484D)
 
@@ -103,11 +96,9 @@ val colorFabInactiveDark = Color(0xFF646464)
 val dividerColorLight = Color(0xFFE8E5DE)
 val dividerColorDark = Color(0xFF252525)
 
-// Alert colors
 val AlertRed = Color(0xFFE53935)
 val AlertRedDeep = Color(0xFFC62828)
 
-// Toast Colors
 val toastNormalBgLight = Color(0xB3353A3E)
 val toastNormalBgDark = Color(0xB31F222E)
 val toastSuccessBg = Color(0xB32ECC71)
@@ -122,27 +113,19 @@ object ThemeManager {
     )
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
-    private val _dynamicColorEnabled = MutableStateFlow(
-        MmkvManager.decodeSettingsBool(AppConfig.PREF_DYNAMIC_COLOR, true)
-    )
-    val dynamicColorEnabled: StateFlow<Boolean> = _dynamicColorEnabled.asStateFlow()
-
     fun setThemeMode(mode: String) {
         MmkvManager.encodeSettings(AppConfig.PREF_UI_MODE_NIGHT, mode)
         _themeMode.value = mode
-        applyNightMode(mode)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun setDynamicColorEnabled(enabled: Boolean) {
-        MmkvManager.encodeSettings(AppConfig.PREF_DYNAMIC_COLOR, enabled)
-        _dynamicColorEnabled.value = enabled
+        // Dynamic color disabled - Khorshid uses its own color scheme
     }
 
     fun refresh() {
         _themeMode.value =
             MmkvManager.decodeSettingsString(AppConfig.PREF_UI_MODE_NIGHT, "0") ?: "0"
-        _dynamicColorEnabled.value =
-            MmkvManager.decodeSettingsBool(AppConfig.PREF_DYNAMIC_COLOR, true)
     }
 }
 
@@ -163,15 +146,7 @@ fun AppTheme(
     darkTheme: Boolean = resolveDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val dynamicColor by ThemeManager.dynamicColorEnabled.collectAsState()
-    val context = LocalContext.current
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> AppDarkColorScheme
-        else -> AppLightColorScheme
-    }
+    val colorScheme = if (darkTheme) AppDarkColorScheme else AppLightColorScheme
     val snackbarController = rememberAppSnackbarController()
 
     val view = LocalView.current

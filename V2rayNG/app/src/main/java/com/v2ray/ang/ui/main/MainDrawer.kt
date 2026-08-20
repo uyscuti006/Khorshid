@@ -97,10 +97,9 @@ fun MainDrawerContent(
                 modifier = Modifier
                     .padding(12.dp)
                     .fillMaxWidth()
-                    .height(120.dp)
+                    .height(180.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .height(180.dp)
             ) {
                 Column(
                     modifier = Modifier

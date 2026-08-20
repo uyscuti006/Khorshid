@@ -24,7 +24,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -58,8 +57,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -83,49 +80,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
+import com.v2ray.ang.ui.compose.AlertRed
+import com.v2ray.ang.ui.compose.LocalDarkTheme
 import com.v2ray.ang.ui.compose.colorPing
 import com.v2ray.ang.ui.compose.colorPingRed
-import com.v2ray.ang.ui.compose.AlertRed
 import kotlinx.coroutines.launch
 
-
-private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF1D70F5),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFDCE8FF),
-    onPrimaryContainer = Color(0xFF001A41),
-    secondary = Color(0xFF535F70),
-    onSecondary = Color.White,
-    background = Color(0xFFF5F3EE),
-    onBackground = Color(0xFF1C1B1F),
-    surface = Color(0xFFFAF8F5),
-    onSurface = Color(0xFF1C1B1F),
-    surfaceVariant = Color(0xFFE8E5DE),
-    onSurfaceVariant = Color(0xFF49454F),
-    outline = Color(0xFF79747E),
-    error = Color(0xFFBA1A1A),
-    onError = Color.White
-)
-
-private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFADC6FF),
-    onPrimary = Color(0xFF002E69),
-    primaryContainer = Color(0xFF004494),
-    onPrimaryContainer = Color(0xFFDCE8FF),
-    secondary = Color(0xFFBCC7DB),
-    onSecondary = Color(0xFF253140),
-    background = Color(0xFF111111),
-    onBackground = Color(0xFFE0E0E0),
-    surface = Color(0xFF1A1A1A),
-    onSurface = Color(0xFFE0E0E0),
-    surfaceVariant = Color(0xFF252525),
-    onSurfaceVariant = Color(0xFFC3C6CF),
-    outline = Color(0xFF8E9099),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005)
-)
-
-private val ConnectingYellow = Color(0xFFFFC107)
 private val SunGlowYellowLight = Color(0xFFFFCA28)
 private val SunGlowYellowDark = Color(0xFFFFD54F)
 private val StatDownloadColor = Color(0xFF2ECC71)
@@ -459,7 +419,6 @@ private fun ConnectButton(
     val blueColor = Color(0xFF2979FF)
     val orangeColor = Color(0xFFFF9100)
     val redColor = if (isDarkMode) Color(0xFFEF5350) else Color(0xFFE53935)
-
     val disconnectOuterColor = if (isDarkMode) Color(0xFF2A1213) else Color(0xFFFCDAD7)
 
     val buttonShape = RoundedCornerShape(16.dp)
@@ -491,7 +450,6 @@ private fun ConnectButton(
         modifier = modifier.height(80.dp),
         contentAlignment = Alignment.Center
     ) {
-
         AnimatedVisibility(
             visible = isRunning,
             enter = fadeIn(tween(250)) + expandVertically(),
@@ -540,7 +498,6 @@ private fun ConnectButton(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.fillMaxWidth(0.70f)
             ) {
-                // پالس آبی موقع کلیک
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -631,16 +588,9 @@ fun SimpleMainScreen(
     val servers = mainViewModel.filterByCategory(allServers, uiState.selectedCategory)
     val context = LocalContext.current
 
-    // Read theme directly from ThemeManager for instant reactivity
-    val themeMode by com.v2ray.ang.ui.compose.ThemeManager.themeMode.collectAsState()
-    val effectiveDarkMode = when (themeMode) {
-        "1" -> false  // Light
-        "2" -> true   // Dark
-        else -> isSystemInDarkTheme()  // System
-    }
-    val colorScheme = if (effectiveDarkMode) DarkColorScheme else LightColorScheme
+    val isDarkTheme = LocalDarkTheme.current
+    val colorScheme = MaterialTheme.colorScheme
 
-    // Kill Switch disconnect confirmation dialog
     if (uiState.showDisconnectDialog) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { onAction(MainAction.DismissDisconnectDialog) },
@@ -666,7 +616,6 @@ fun SimpleMainScreen(
         )
     }
 
-    // Empty category dialog
     if (uiState.showEmptyCategoryDialog) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { onAction(MainAction.DismissEmptyCategoryDialog) },
@@ -685,218 +634,209 @@ fun SimpleMainScreen(
         )
     }
 
-    MaterialTheme(colorScheme = colorScheme) {
-        val gradientTint by animateColorAsState(
-            targetValue = when {
-                uiState.isConnecting -> Color(0xFFFFCA28).copy(alpha = 0.22f)
-                uiState.isRunning -> (if (effectiveDarkMode) Color(0xFFFFD54F).copy(alpha = 0.35f) else Color(0xFFFFE082).copy(alpha = 0.35f))
-                else -> colorScheme.background
-            },
-            animationSpec = tween(durationMillis = 700),
-            label = "gradientTint"
-        )
-        val backgroundBrush = Brush.verticalGradient(
-            colors = listOf(gradientTint, colorScheme.background)
-        )
+    val gradientTint by animateColorAsState(
+        targetValue = when {
+            uiState.isConnecting -> Color(0xFFFFCA28).copy(alpha = 0.22f)
+            uiState.isRunning -> (if (isDarkTheme) Color(0xFFFFD54F).copy(alpha = 0.35f) else Color(0xFFFFE082).copy(alpha = 0.35f))
+            else -> colorScheme.background
+        },
+        animationSpec = tween(durationMillis = 700),
+        label = "gradientTint"
+    )
+    val backgroundBrush = Brush.verticalGradient(
+        colors = listOf(gradientTint, colorScheme.background)
+    )
 
-        Scaffold(
-            containerColor = Color.Transparent,
-            topBar = {
-                val iconTint = if (effectiveDarkMode) Color(0xFFE0E0E0) else Color(0xFF424242)
-                TopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        IconButton(onClick = { onAction(MainAction.ToggleTheme) }) {
-                            Icon(
-                                imageVector = if (effectiveDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                                contentDescription = "Toggle Theme",
-                                modifier = Modifier.size(24.dp),
-                                tint = iconTint
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        navigationIconContentColor = Color.Unspecified,
-                        actionIconContentColor = Color.Unspecified
-                    ),
-                    actions = {
-                        IconButton(onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/VPN_Khorshid"))
-                            context.startActivity(intent)
-                        }) {
-                            Icon(painter = painterResource(id = R.drawable.ic_telegram), contentDescription = "Telegram", modifier = Modifier.size(25.dp), tint = iconTint)
-                        }
-                        IconButton(onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/uyscuti006/Khorshid"))
-                            context.startActivity(intent)
-                        }) {
-                            Icon(painter = painterResource(id = R.drawable.ic_github), contentDescription = "GitHub", modifier = Modifier.size(24.dp), tint = iconTint)
-                        }
-                        IconButton(onClick = {
-                            onAction(MainAction.EnterAdvancedMode)
-                            onOpenAdvanced()
-                        }) {
-                            Icon(painter = painterResource(id = R.drawable.ic_settings_24dp), contentDescription = "Settings", modifier = Modifier.size(30.dp), tint = iconTint)
-                        }
+    Scaffold(
+        containerColor = Color.Transparent,
+        topBar = {
+            val iconTint = if (isDarkTheme) Color(0xFFE0E0E0) else Color(0xFF424242)
+            TopAppBar(
+                title = {},
+                navigationIcon = {
+                    IconButton(onClick = { onAction(MainAction.ToggleTheme) }) {
+                        Icon(
+                            imageVector = if (isDarkTheme) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                            contentDescription = "Toggle Theme",
+                            modifier = Modifier.size(24.dp),
+                            tint = iconTint
+                        )
                     }
-                )
-            }
-        ) { innerPadding ->
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(backgroundBrush)
-            ) {
-
-                val screenWidth = maxWidth
-                val screenHeight = maxHeight
-                val isLandscape = screenWidth > screenHeight
-
-                if (isLandscape) {
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(
-                                top = innerPadding.calculateTopPadding(),
-                                bottom = innerPadding.calculateBottomPadding() + 8.dp,
-                                start = 16.dp,
-                                end = 16.dp
-                            ),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            LionSunLogo(
-                                isRunning = uiState.isRunning,
-                                isDarkMode = effectiveDarkMode,
-                                modifier = Modifier.size((screenHeight * 0.65f).coerceAtMost(260.dp))
-                            )
-                        }
-
-
-                        Column(
-                            modifier = Modifier
-                                .weight(1.1f)
-                                .fillMaxHeight(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            CategoryFilterRow(
-                                selectedCategory = uiState.selectedCategory,
-                                isConnecting = uiState.isConnecting,
-                                onSelectCategory = { category -> onAction(MainAction.SelectCategory(category)) }
-                            )
-
-                            CipherSuitesToggle(
-                                isEnabled = uiState.isCipherSuitesEnabled,
-                                isConnecting = uiState.isConnecting,
-                                effectiveDarkMode = effectiveDarkMode,
-                                onToggle = { onAction(MainAction.ToggleCipherSuites) }
-                            )
-
-                            if (uiState.isRunning) {
-                                LiveStatsRow(
-                                    uiState = uiState,
-                                    onTestPing = { onAction(MainAction.TestCurrentServer) },
-                                    width = screenWidth * 0.45f
-                                )
-                            }
-
-                            ConnectButton(
-                                isRunning = uiState.isRunning,
-                                isConnecting = uiState.isConnecting,
-                                isDarkMode = effectiveDarkMode,
-                                onAction = onAction,
-                                modifier = Modifier.fillMaxWidth(0.9f)
-                            )
-                        }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    navigationIconContentColor = Color.Unspecified,
+                    actionIconContentColor = Color.Unspecified
+                ),
+                actions = {
+                    IconButton(onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/VPN_Khorshid"))
+                        context.startActivity(intent)
+                    }) {
+                        Icon(painter = painterResource(id = R.drawable.ic_telegram), contentDescription = "Telegram", modifier = Modifier.size(25.dp), tint = iconTint)
                     }
-                } else {
+                    IconButton(onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/uyscuti006/Khorshid"))
+                        context.startActivity(intent)
+                    }) {
+                        Icon(painter = painterResource(id = R.drawable.ic_github), contentDescription = "GitHub", modifier = Modifier.size(24.dp), tint = iconTint)
+                    }
+                    IconButton(onClick = {
+                        onAction(MainAction.EnterAdvancedMode)
+                        onOpenAdvanced()
+                    }) {
+                        Icon(painter = painterResource(id = R.drawable.ic_settings_24dp), contentDescription = "Settings", modifier = Modifier.size(30.dp), tint = iconTint)
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(backgroundBrush)
+        ) {
+            val screenWidth = maxWidth
+            val screenHeight = maxHeight
+            val isLandscape = screenWidth > screenHeight
 
-                    val logoSize = (screenWidth * 0.80f).coerceAtMost(screenHeight * 0.38f)
-
+            if (isLandscape) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(
+                            top = innerPadding.calculateTopPadding(),
+                            bottom = innerPadding.calculateBottomPadding() + 8.dp,
+                            start = 16.dp,
+                            end = 16.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(bottom = 40.dp),
+                            .weight(1f)
+                            .fillMaxHeight(),
                         contentAlignment = Alignment.Center
                     ) {
                         LionSunLogo(
                             isRunning = uiState.isRunning,
-                            isDarkMode = effectiveDarkMode,
-                            modifier = Modifier.size(logoSize)
+                            isDarkMode = isDarkTheme,
+                            modifier = Modifier.size((screenHeight * 0.65f).coerceAtMost(260.dp))
                         )
                     }
 
                     Column(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(
-                                top = innerPadding.calculateTopPadding(),
-                                bottom = innerPadding.calculateBottomPadding() + 16.dp
-                            ),
+                            .weight(1.1f)
+                            .fillMaxHeight(),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceBetween
+                        verticalArrangement = Arrangement.SpaceEvenly
                     ) {
-
                         CategoryFilterRow(
                             selectedCategory = uiState.selectedCategory,
                             isConnecting = uiState.isConnecting,
-                            onSelectCategory = { category -> onAction(MainAction.SelectCategory(category)) },
-                            modifier = Modifier.padding(top = 24.dp)
+                            onSelectCategory = { category -> onAction(MainAction.SelectCategory(category)) }
                         )
 
                         CipherSuitesToggle(
                             isEnabled = uiState.isCipherSuitesEnabled,
                             isConnecting = uiState.isConnecting,
-                            effectiveDarkMode = effectiveDarkMode,
-                            onToggle = { onAction(MainAction.ToggleCipherSuites) },
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            effectiveDarkMode = isDarkTheme,
+                            onToggle = { onAction(MainAction.ToggleCipherSuites) }
                         )
 
-                        // Clean IP: نمایش تعداد کانفیگ‌های تولید شده
-                        if (uiState.selectedCategory == ConfigCategory.CLEAN_IP && servers.isNotEmpty()) {
-                            Text(
-                                text = "${servers.size} Clean IP configs available",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 32.dp),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        AnimatedVisibility(
-                            visible = uiState.isRunning,
-                            enter = fadeIn(tween(400)) + expandVertically(),
-                            exit = fadeOut(tween(250)) + shrinkVertically(),
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        ) {
+                        if (uiState.isRunning) {
                             LiveStatsRow(
                                 uiState = uiState,
                                 onTestPing = { onAction(MainAction.TestCurrentServer) },
-                                width = screenWidth * 0.85f
+                                width = screenWidth * 0.45f
                             )
                         }
 
                         ConnectButton(
                             isRunning = uiState.isRunning,
                             isConnecting = uiState.isConnecting,
-                            isDarkMode = effectiveDarkMode,
+                            isDarkMode = isDarkTheme,
                             onAction = onAction,
-                            modifier = Modifier
-                                .fillMaxWidth(0.88f)
-                                .padding(horizontal = 16.dp)
+                            modifier = Modifier.fillMaxWidth(0.9f)
                         )
                     }
+                }
+            } else {
+                val logoSize = (screenWidth * 0.80f).coerceAtMost(screenHeight * 0.38f)
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = 40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    LionSunLogo(
+                        isRunning = uiState.isRunning,
+                        isDarkMode = isDarkTheme,
+                        modifier = Modifier.size(logoSize)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(
+                            top = innerPadding.calculateTopPadding(),
+                            bottom = innerPadding.calculateBottomPadding() + 16.dp
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    CategoryFilterRow(
+                        selectedCategory = uiState.selectedCategory,
+                        isConnecting = uiState.isConnecting,
+                        onSelectCategory = { category -> onAction(MainAction.SelectCategory(category)) },
+                        modifier = Modifier.padding(top = 24.dp)
+                    )
+
+                    CipherSuitesToggle(
+                        isEnabled = uiState.isCipherSuitesEnabled,
+                        isConnecting = uiState.isConnecting,
+                        effectiveDarkMode = isDarkTheme,
+                        onToggle = { onAction(MainAction.ToggleCipherSuites) },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+
+                    if (uiState.selectedCategory == ConfigCategory.CLEAN_IP && servers.isNotEmpty()) {
+                        Text(
+                            text = "${servers.size} Clean IP configs available",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 32.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    AnimatedVisibility(
+                        visible = uiState.isRunning,
+                        enter = fadeIn(tween(400)) + expandVertically(),
+                        exit = fadeOut(tween(250)) + shrinkVertically(),
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    ) {
+                        LiveStatsRow(
+                            uiState = uiState,
+                            onTestPing = { onAction(MainAction.TestCurrentServer) },
+                            width = screenWidth * 0.85f
+                        )
+                    }
+
+                    ConnectButton(
+                        isRunning = uiState.isRunning,
+                        isConnecting = uiState.isConnecting,
+                        isDarkMode = isDarkTheme,
+                        onAction = onAction,
+                        modifier = Modifier
+                            .fillMaxWidth(0.88f)
+                            .padding(horizontal = 16.dp)
+                    )
                 }
             }
         }
