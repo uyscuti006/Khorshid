@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.v2ray.ang.core.LauncherManager
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.reachability.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -66,7 +67,8 @@ class IpScannerViewModel(application: Application) : AndroidViewModel(applicatio
         val testedCount: Int = 0,
         val whiteCount: Int = 0,
         val failedCount: Int = 0,
-        val statusMessage: String = "Ready"
+        val statusMessage: String = "Ready",
+        val showScanCompleteBanner: Boolean = false
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -131,6 +133,14 @@ class IpScannerViewModel(application: Application) : AndroidViewModel(applicatio
     fun detectOperator() {
         val op = KhorshidIspDetector.detect(getApplication())
         _uiState.update { it.copy(operator = op) }
+    }
+
+    fun setOperator(op: KhorshidIspDetector.Operator) {
+        _uiState.update { it.copy(operator = op) }
+    }
+
+    fun dismissScanCompleteBanner() {
+        _uiState.update { it.copy(showScanCompleteBanner = false) }
     }
 
     fun setIpSource(type: IpSourceType) = _uiState.update { it.copy(ipSource = type) }
@@ -243,7 +253,7 @@ class IpScannerViewModel(application: Application) : AndroidViewModel(applicatio
             "1,000" -> 1000
             "5,000" -> 5000
             "20,000" -> 20000
-            else -> state.customTargetCount.replace(",", "").toIntOrNull()?.coerceIn(10, 50000) ?: 1000
+            else -> state.customTargetCount.replace(",", "").toIntOrNull()?.coerceAtLeast(10) ?: 1000
         }
 
         val workerNum = when {
@@ -276,6 +286,7 @@ class IpScannerViewModel(application: Application) : AndroidViewModel(applicatio
                     testedCount = 0,
                     whiteCount = 0,
                     failedCount = 0,
+                    showScanCompleteBanner = false,
                     statusMessage = "Scanning ${ipsToScan.size} Cloudflare endpoints..."
                 )
             }
@@ -309,7 +320,8 @@ class IpScannerViewModel(application: Application) : AndroidViewModel(applicatio
                     it.copy(
                         isScanning = false,
                         scanResults = results,
-                        statusMessage = if (results.isNotEmpty()) "Done. ${results.size} white IPs found." else "Scan finished. No clean IPs found."
+                        statusMessage = if (results.isNotEmpty()) "Done. ${results.size} white IPs found." else "Scan finished. No clean IPs found.",
+                        showScanCompleteBanner = results.isNotEmpty()
                     )
                 }
                 startCooldown(5)
@@ -360,7 +372,8 @@ class IpScannerViewModel(application: Application) : AndroidViewModel(applicatio
             it.copy(
                 isScanning = false,
                 scanResults = mergedResults,
-                statusMessage = statusMsg
+                statusMessage = statusMsg,
+                showScanCompleteBanner = mergedResults.isNotEmpty()
             )
         }
 
@@ -560,6 +573,7 @@ class IpScannerViewModel(application: Application) : AndroidViewModel(applicatio
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(isGenerating = false) }
                 if (count > 0) {
+                    SettingsChangeManager.makeSetupGroupTab()
                     _toastEvent.tryEmit("Generated $count clean configs in 'Clean IP Configs'")
                 } else {
                     _toastEvent.tryEmit("Error: No configs generated. Check source configs.")

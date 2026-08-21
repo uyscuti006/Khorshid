@@ -8,6 +8,7 @@ import android.telephony.TelephonyManager
 object KhorshidIspDetector {
 
     enum class Operator(val displayName: String, val ranges: List<String>) {
+        ALL("All", KhorshidConstants.MCI_RANGES + KhorshidConstants.IRANCELL_RANGES + KhorshidConstants.RIGHTEL_RANGES + KhorshidConstants.FIXED_ISP_RANGES + KhorshidConstants.GENERAL_CF_RANGES),
         MCI("MCI", KhorshidConstants.MCI_RANGES + KhorshidConstants.GENERAL_CF_RANGES),
         IRANCELL("Irancell", KhorshidConstants.IRANCELL_RANGES + KhorshidConstants.GENERAL_CF_RANGES),
         RIGHTEL("Rightel", KhorshidConstants.RIGHTEL_RANGES + KhorshidConstants.GENERAL_CF_RANGES),
@@ -31,7 +32,7 @@ object KhorshidIspDetector {
                 val opName = (tm.simOperatorName + " " + tm.networkOperatorName).lowercase()
 
                 return when {
-                    opCode.startsWith("43211") || opName.contains("mci") || opName.contains("hamrah") || opName.contains("tci") -> Operator.MCI
+                    opCode.startsWith("43214") || opName.contains("mci") || opName.contains("hamrah") || opName.contains("tci") -> Operator.MCI
                     opCode.startsWith("43235") || opName.contains("irancell") || opName.contains("mtn") -> Operator.IRANCELL
                     opCode.startsWith("43220") || opName.contains("rightel") -> Operator.RIGHTEL
                     else -> Operator.GENERAL

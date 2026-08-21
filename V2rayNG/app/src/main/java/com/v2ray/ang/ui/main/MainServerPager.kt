@@ -387,7 +387,7 @@ private fun ServerCardItem(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (serverCache.testDelayMillis > 0L) stringResource(R.string.server_test_delay_value, serverCache.testDelayMillis) else "",
+                    text = if (serverCache.testDelayMillis != 0L) stringResource(R.string.server_test_delay_value, serverCache.testDelayMillis) else "",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     color = if (serverCache.testDelayMillis < 0L) colorPingRed else colorPing,
                     maxLines = 1,

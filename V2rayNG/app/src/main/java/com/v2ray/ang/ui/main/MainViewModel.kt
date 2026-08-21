@@ -225,7 +225,10 @@ class MainViewModel(
                 updateRunningState(false)
             }
             is MainServiceEvent.MeasureDelayResult -> {
-                _uiState.update { it.copy(status = MainStatus.ConnectionTest(event.result), currentPingDelay = event.result.delayMillis) }
+                if (uiState.value.isRunning) {
+                    val delay = if (event.result.delayMillis == -1L) -3L else event.result.delayMillis
+                    _uiState.update { it.copy(status = MainStatus.ConnectionTest(event.result), currentPingDelay = delay) }
+                }
             }
 
             MainServiceEvent.MeasureConfigSuccess -> {
@@ -329,7 +332,7 @@ class MainViewModel(
                     subscriptionIdChanged(targetGroupId)
                 }
 
-                _uiState.update { it.copy(selectedCategory = action.category) }
+                _uiState.update { it.copy(selectedCategory = action.category, showCleanIpEmptyBanner = action.category == ConfigCategory.CLEAN_IP) }
                 if (uiState.value.isRunning) {
                     _restartConnectRequest.tryEmit(Unit)
                 }
@@ -352,6 +355,7 @@ class MainViewModel(
             }
 
             MainAction.ConnectFastest -> {
+                _uiState.update { it.copy(showCleanIpEmptyBanner = false) }
                 connectToFastestServer()
             }
 
@@ -359,6 +363,7 @@ class MainViewModel(
                 connectJob?.cancel()
                 connectJob = null
                 cancelAllPing()
+                CipherSuitesManager.startupSafetyCheck()
                 _uiState.update { it.copy(isConnecting = false, status = MainStatus.Disconnected) }
             }
 
@@ -404,6 +409,13 @@ class MainViewModel(
                 _uiState.update { it.copy(showEmptyCategoryDialog = false, emptyCategoryName = "") }
             }
 
+            MainAction.DismissCleanIpEmptyBanner -> {
+                _uiState.update { it.copy(showCleanIpEmptyBanner = false) }
+            }
+
+            MainAction.OpenIpScanner -> {
+            }
+
             MainAction.ConfirmDisconnectWithKillSwitch -> {
                 _uiState.update { it.copy(showDisconnectDialog = false) }
                 connectJob?.cancel()
@@ -432,7 +444,7 @@ class MainViewModel(
 
         if (!hasDefault) {
             val oldSub = existingSubs.find {
-                val r = it.subscription.remarks?.trim()?.lowercase().orEmpty()
+                val r = it.subscription.remarks.trim().lowercase()
                 r == "default subscription" || r == "default"
             }
             if (oldSub != null) {
@@ -978,12 +990,12 @@ class MainViewModel(
 
     private fun connectToFastestServer() {
         launchLoading { withContext(ioDispatcher) {
+            var guids = emptyList<String>()
             try {
                 connectJob?.cancel()
                 connectJob = currentCoroutineContext()[Job]
                 val category = uiState.value.selectedCategory
 
-                val guids: List<String>
                 val targetGroupId: String
 
                 if (category == ConfigCategory.CLEAN_IP) {
@@ -1000,8 +1012,7 @@ class MainViewModel(
 
                     if (cleanGuids.isEmpty()) {
                         _uiState.update { it.copy(
-                            showEmptyCategoryDialog = true,
-                            emptyCategoryName = category.label,
+                            showCleanIpEmptyBanner = true,
                             isConnecting = false
                         ) }
                         return@withContext
@@ -1097,6 +1108,8 @@ class MainViewModel(
 
                 _uiState.update { it.copy(status = MainStatus.TestProgress("Testing ${guids.size} ${category.label} servers...")) }
 
+                CipherSuitesManager.applyToAll(guids)
+
                 dataSource.clearAllTestDelayResults(guids)
 
                 val finishDeferred = CompletableDeferred<Unit>()
@@ -1121,15 +1134,8 @@ class MainViewModel(
                     if (finishDeferred.isCompleted) break
                     val elapsed = System.currentTimeMillis() - startTime
                     if (elapsed >= 90_000L) {
-                        val validSoFar = guids.mapNotNull { guid ->
-                            val affiliation = dataSource.decodeAffiliationInfo(guid)
-                            val delay = affiliation?.testDelayMillis ?: 0L
-                            if (delay > 0) Pair(guid, delay) else null
-                        }
-                        if (validSoFar.isNotEmpty()) {
-                            dataSource.cancelAllPing()
-                            break
-                        }
+                        dataSource.cancelAllPing()
+                        break
                     }
                     delay(500L)
                 }
@@ -1143,7 +1149,8 @@ class MainViewModel(
                 }.sortedBy { it.second }
 
                 if (candidates.isEmpty()) {
-                    _uiState.update { it.copy(status = MainStatus.TestProgress("Connection timeout. No servers responded."), isConnecting = false) }
+                    CipherSuitesManager.restoreAllExcept(guids, "")
+                    _uiState.update { it.copy(status = MainStatus.TestProgress("All configs returned ping -1. Check network or refresh subscriptions."), isConnecting = false) }
                     return@withContext
                 }
 
@@ -1151,13 +1158,14 @@ class MainViewModel(
                 _uiState.update { it.copy(status = MainStatus.TestProgress("Connecting..."), selectedGuid = best.first, isConnecting = false) }
                 dataSource.setSelectServer(best.first)
 
-                CipherSuitesManager.applyBeforeConnect(best.first)
+                CipherSuitesManager.restoreAllExcept(guids, best.first)
 
                 _requestConnectAfterPick.tryEmit(Unit)
 
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (e: Exception) {
                 LogUtil.e(AppConfig.TAG, "ConnectFastest failed", e)
+                CipherSuitesManager.restoreAllExcept(guids, "")
                 _uiState.update { it.copy(status = MainStatus.TestProgress("Error occurred!"), isConnecting = false) }
             }
         } }

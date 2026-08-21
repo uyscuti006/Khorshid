@@ -50,7 +50,8 @@ data class MainUiState(
     val connectionDurationText: String = "00:00:00",
     val isCipherSuitesEnabled: Boolean = false,
     val showEmptyCategoryDialog: Boolean = false,
-    val emptyCategoryName: String = ""
+    val emptyCategoryName: String = "",
+    val showCleanIpEmptyBanner: Boolean = false
 )
 
 /**
@@ -103,4 +104,6 @@ sealed interface MainAction {
     data object ConfirmDisconnectWithKillSwitch : MainAction
     data object DismissDisconnectDialog : MainAction
     data object GenerateCleanIPs : MainAction
+    data object DismissCleanIpEmptyBanner : MainAction
+    data object OpenIpScanner : MainAction
 }

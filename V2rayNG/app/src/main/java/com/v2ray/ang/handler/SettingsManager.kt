@@ -459,6 +459,11 @@ object SettingsManager {
         // Write defaults in the exact order requested by the user
         ensureDefaultValue(AppConfig.PREF_MODE, VPN)
         ensureDefaultValue(AppConfig.PREF_VPN_DNS, AppConfig.DNS_VPN)
+        // Force migrate old DNS 1.1.1.1 to 8.8.8.8
+        val currentDns = MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_DNS)
+        if (currentDns == "1.1.1.1" || currentDns == "1.1.1.1,1.0.0.1") {
+            MmkvManager.encodeSettings(AppConfig.PREF_VPN_DNS, AppConfig.DNS_VPN)
+        }
         ensureDefaultValue(AppConfig.PREF_VPN_MTU, AppConfig.VPN_MTU.toString())
         ensureDefaultValue(AppConfig.PREF_SOCKS_PORT, AppConfig.PORT_SOCKS)
         ensureDefaultValue(AppConfig.PREF_REMOTE_DNS, AppConfig.DNS_PROXY)
@@ -484,6 +489,7 @@ object SettingsManager {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun migrateHysteria2PinSHA256() {
         // Check if migration has already been done
         val migrationKey = "hysteria2_pin_sha256_migrated"

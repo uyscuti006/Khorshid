@@ -31,7 +31,6 @@ import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.AboutActivity
 import com.v2ray.ang.ui.backup.BackupActivity
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
-import com.v2ray.ang.ui.checkupdate.CheckUpdateActivity
 import com.v2ray.ang.ui.logcat.LogcatActivity
 import com.v2ray.ang.ui.perappproxy.PerAppProxyActivity
 import com.v2ray.ang.ui.routing.RoutingSettingActivity
@@ -169,7 +168,11 @@ class MainActivity : HelperBaseComponentActivity() {
                         else -> mainViewModel.onAction(action)
                     }
                 },
-                onOpenAdvanced = { isAdvancedMode = true }
+                onOpenAdvanced = { isAdvancedMode = true },
+                onNavigateToIpScanner = {
+                    val intent = Intent(this, com.v2ray.ang.ui.ipscanner.IpScannerActivity::class.java)
+                    settingsActivityLauncher.launch(intent)
+                }
             )
         } else {
             // Advanced mode
@@ -220,7 +223,6 @@ class MainActivity : HelperBaseComponentActivity() {
             MainDestination.Settings -> Intent(this, SettingsActivity::class.java)
             MainDestination.IpScanner -> Intent(this, com.v2ray.ang.ui.ipscanner.IpScannerActivity::class.java)
             MainDestination.Logcat -> Intent(this, LogcatActivity::class.java)
-            MainDestination.CheckUpdate -> Intent(this, CheckUpdateActivity::class.java)
             MainDestination.BackupRestore -> Intent(this, BackupActivity::class.java)
             MainDestination.About -> Intent(this, AboutActivity::class.java)
             MainDestination.Promotion -> {

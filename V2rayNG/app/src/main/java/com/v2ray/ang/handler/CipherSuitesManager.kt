@@ -212,6 +212,33 @@ object CipherSuitesManager {
     }
 
     /**
+     * Apply CipherSuites values to all servers before ping testing.
+     *
+     * @param guids List of server GUIDs to apply to
+     */
+    fun applyToAll(guids: List<String>) {
+        if (!isEnabled()) return
+        val profile = getCachedProfile() ?: return
+        for (guid in guids) {
+            applyBeforeConnect(guid)
+        }
+    }
+
+    /**
+     * Restore original values for all servers except the selected one.
+     *
+     * @param guids All server GUIDs that were modified
+     * @param exceptGuid The GUID to keep modified (the one we're connecting to)
+     */
+    fun restoreAllExcept(guids: List<String>, exceptGuid: String) {
+        for (guid in guids) {
+            if (guid != exceptGuid) {
+                restoreAfterDisconnect(guid)
+            }
+        }
+    }
+
+    /**
      * Restore original values after disconnect.
      *
      * Idempotent - calling multiple times is safe.

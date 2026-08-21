@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui.ipscanner
 
-import android.os.Bundle
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
@@ -14,20 +15,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -45,6 +49,7 @@ class IpScannerActivity : BaseComponentActivity() {
         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
         val context = LocalContext.current
         var selectedTab by remember { mutableIntStateOf(0) }
+        var showOperatorMenu by remember { mutableStateOf(false) }
 
         LaunchedEffect(Unit) {
             viewModel.toastEvent.collect { message ->
@@ -71,35 +76,66 @@ class IpScannerActivity : BaseComponentActivity() {
                     },
                     navigationIcon = {
                         IconButton(onClick = { finish() }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
+                            Icon(Icons.AutoMirrored.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
                         }
                     },
                     actions = {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shape = RoundedCornerShape(10.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                            modifier = Modifier
-                                .padding(end = 12.dp)
-                                .clickable { viewModel.detectOperator() }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        Box {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                modifier = Modifier.padding(end = 12.dp)
                             ) {
-                                Box(
+                                Row(
                                     modifier = Modifier
-                                        .size(7.dp)
-                                        .clip(CircleShape)
-                                        .background(if (uiState.isScanning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = uiState.operator.displayName,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                        .clickable { showOperatorMenu = true }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(if (uiState.isScanning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = uiState.operator.displayName,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = showOperatorMenu,
+                                onDismissRequest = { showOperatorMenu = false }
+                            ) {
+                                com.v2ray.ang.reachability.KhorshidIspDetector.Operator.entries.forEach { op ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = op.displayName,
+                                                fontWeight = if (op == uiState.operator) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            if (op == uiState.operator) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp),
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            viewModel.setOperator(op)
+                                            showOperatorMenu = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     },
@@ -107,25 +143,29 @@ class IpScannerActivity : BaseComponentActivity() {
                 )
             }
         ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-            ) {
-                TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
                 ) {
-                    Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Scanner", fontWeight = FontWeight.Bold) })
-                    Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Results (${uiState.scanResults.size})", fontWeight = FontWeight.Bold) })
-                    Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Generate", fontWeight = FontWeight.Bold) })
-                }
+                    PrimaryTabRow(
+                        selectedTabIndex = selectedTab,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.primary
+                    ) {
+                        Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Scanner", fontWeight = FontWeight.Bold) })
+                        Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Results (${uiState.scanResults.size})", fontWeight = FontWeight.Bold) })
+                        Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Generate", fontWeight = FontWeight.Bold) })
+                    }
 
-                when (selectedTab) {
-                    0 -> MobileScanWorkspace(uiState, viewModel)
-                    1 -> MobileResultsWorkspace(uiState, viewModel)
-                    2 -> MobileExportWorkspace(uiState, viewModel)
+                    Column(modifier = Modifier.weight(1f)) {
+                        when (selectedTab) {
+                            0 -> MobileScanWorkspace(uiState, viewModel)
+                            1 -> MobileResultsWorkspace(uiState, viewModel) { selectedTab = it }
+                            2 -> MobileExportWorkspace(uiState, viewModel)
+                        }
+                    }
                 }
             }
         }
@@ -133,7 +173,10 @@ class IpScannerActivity : BaseComponentActivity() {
 }
 
 @Composable
-private fun MobileScanWorkspace(uiState: IpScannerViewModel.UiState, viewModel: IpScannerViewModel) {
+private fun MobileScanWorkspace(
+    uiState: IpScannerViewModel.UiState,
+    viewModel: IpScannerViewModel
+) {
     var showCustomTarget by remember { mutableStateOf(false) }
     var showCustomWorkers by remember { mutableStateOf(false) }
     var showCustomTimeout by remember { mutableStateOf(false) }
@@ -203,7 +246,7 @@ private fun MobileScanWorkspace(uiState: IpScannerViewModel.UiState, viewModel: 
                     OutlinedTextField(
                         value = uiState.customTargetCount,
                         onValueChange = { viewModel.setCustomTargetCount(it) },
-                        label = { Text("Custom count (10 - 50,000)") },
+                        label = { Text("Custom count (min 10)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -268,7 +311,9 @@ private fun MobileScanWorkspace(uiState: IpScannerViewModel.UiState, viewModel: 
                     selectedPresets = uiState.selectedPorts,
                     onSelectionChange = { viewModel.setSelectedPorts(it) },
                     columns = 3,
-                    multiSelect = true
+                    multiSelect = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
                 )
 
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -279,7 +324,7 @@ private fun MobileScanWorkspace(uiState: IpScannerViewModel.UiState, viewModel: 
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Auto-Generate Configs", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                        Text("Auto-Generate Configs", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
                         Text("Auto-clone all compatible configs with best IP after scan", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(checked = uiState.autoGenerateConfigs, onCheckedChange = { viewModel.setAutoGenerateConfigs(it) }, enabled = !settingsDisabled)
@@ -353,7 +398,7 @@ private fun MobileScanWorkspace(uiState: IpScannerViewModel.UiState, viewModel: 
                 } else {
                     Icon(imageVector = if (uiState.isScanning) Icons.Default.Stop else Icons.Default.PlayArrow, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(text = if (uiState.isScanning) "Stop Scan" else "Start Khorshid Smart Scan", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text(text = if (uiState.isScanning) "Stop Scan" else "Start Scan", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
             }
         }
@@ -361,8 +406,11 @@ private fun MobileScanWorkspace(uiState: IpScannerViewModel.UiState, viewModel: 
 }
 
 @Composable
-private fun MobileResultsWorkspace(uiState: IpScannerViewModel.UiState, viewModel: IpScannerViewModel) {
-    val clipboard = LocalClipboardManager.current
+private fun MobileResultsWorkspace(
+    uiState: IpScannerViewModel.UiState,
+    viewModel: IpScannerViewModel,
+    onNavigateToTab: (Int) -> Unit = {}
+) {
     val context = LocalContext.current
 
     if (uiState.scanResults.isEmpty() && uiState.scanningNeighborIp == null) {
@@ -376,6 +424,51 @@ private fun MobileResultsWorkspace(uiState: IpScannerViewModel.UiState, viewMode
         modifier = Modifier.fillMaxSize().padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        if (uiState.showScanCompleteBanner && uiState.scanResults.isNotEmpty()) {
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onNavigateToTab(2)
+                            viewModel.dismissScanCompleteBanner()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Scan complete! ${uiState.scanResults.size} white IPs found",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Tap to go to Generate tab",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Default.ArrowForward,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
         if (uiState.scanningNeighborIp != null) {
             ElevatedCard(
                 modifier = Modifier.fillMaxWidth(),
@@ -442,7 +535,8 @@ private fun MobileResultsWorkspace(uiState: IpScannerViewModel.UiState, viewMode
         }
 
         ElevatedCard(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
@@ -470,7 +564,8 @@ private fun MobileResultsWorkspace(uiState: IpScannerViewModel.UiState, viewMode
                     OutlinedButton(
                         onClick = {
                             val list = uiState.scanResults.take(20).joinToString("\n") { "${it.ip}:${it.port}" }
-                            clipboard.setText(AnnotatedString(list))
+                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            cm.setPrimaryClip(ClipData.newPlainText("scan results", list))
                             Toast.makeText(context, "Top 20 endpoints copied", Toast.LENGTH_SHORT).show()
                         },
                         shape = RoundedCornerShape(8.dp),
@@ -541,8 +636,10 @@ private fun MobileResultsWorkspace(uiState: IpScannerViewModel.UiState, viewMode
 }
 
 @Composable
-private fun MobileExportWorkspace(uiState: IpScannerViewModel.UiState, viewModel: IpScannerViewModel) {
-    val context = LocalContext.current
+private fun MobileExportWorkspace(
+    uiState: IpScannerViewModel.UiState,
+    viewModel: IpScannerViewModel
+) {
     val compatibleConfigs = uiState.userConfigs.filter { it.isCompatible }
     val allSelected = compatibleConfigs.isNotEmpty() && uiState.selectedGuids.size == compatibleConfigs.size
 

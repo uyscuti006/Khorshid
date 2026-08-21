@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.jaredsburrows.license")
 }
@@ -13,7 +12,7 @@ android {
         applicationId = "com.khorshid.vpn"
         minSdk = 24
         targetSdk = 37
-        versionCode = 3
+        versionCode = 5
         versionName = "1.1.0"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
@@ -63,7 +62,7 @@ android {
 
     sourceSets {
         getByName("main") {
-            jniLibs.srcDirs("libs")
+            jniLibs.setSrcDirs(listOf("libs"))
         }
     }
 
@@ -71,56 +70,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
-    }
-
-    applicationVariants.all {
-        val variant = this
-        val isFdroid = variant.productFlavors.any { it.name == "fdroid" }
-        if (isFdroid) {
-            val versionCodes =
-                mapOf(
-                    "armeabi-v7a" to 2, "arm64-v8a" to 1, "x86" to 4, "x86_64" to 3, "universal" to 0
-                )
-
-            variant.outputs
-                .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
-                .forEach { output ->
-                    val abi = output.getFilter("ABI") ?: "universal"
-                    output.outputFileName = "v2rayNG_${variant.versionName}-fdroid_${abi}.apk"
-                    if (versionCodes.containsKey(abi)) {
-                        output.versionCodeOverride =
-                            (100 * variant.versionCode + versionCodes[abi]!!).plus(5000000)
-                    } else {
-                        return@forEach
-                    }
-                }
-        } else {
-            val versionCodes =
-                mapOf("armeabi-v7a" to 4, "arm64-v8a" to 4, "x86" to 4, "x86_64" to 4, "universal" to 4)
-
-            variant.outputs
-                .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
-                .forEach { output ->
-                    val abi = if (output.getFilter("ABI") != null)
-                        output.getFilter("ABI")
-                    else
-                        "universal"
-
-                    output.outputFileName = "v2rayNG_${variant.versionName}_${abi}.apk"
-                    if (versionCodes.containsKey(abi)) {
-                        output.versionCodeOverride =
-                            (1000000 * versionCodes[abi]!!).plus(variant.versionCode)
-                    } else {
-                        return@forEach
-                    }
-                }
-        }
     }
 
     buildFeatures {
@@ -149,6 +98,46 @@ android {
         }
     }
 
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        val isFdroid = variant.name.startsWith("fdroid")
+
+        if (isFdroid) {
+            val fdroidCodes = mapOf(
+                "armeabi-v7a" to 2, "arm64-v8a" to 1, "x86" to 4, "x86_64" to 3, "universal" to 0
+            )
+            variant.outputs.forEach { output ->
+                val abi = output.filters.find { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }?.identifier ?: "universal"
+                val vName = output.versionName.orNull ?: "unknown"
+                output.outputFileName.set("v2rayNG_${vName}-fdroid_${abi}.apk")
+                fdroidCodes[abi]?.let { abiCode ->
+                    val vCode = output.versionCode.getOrElse(0)
+                    output.versionCode.set(vCode * 100 + abiCode + 5000000)
+                }
+            }
+        } else {
+            val playCodes = mapOf(
+                "armeabi-v7a" to 4, "arm64-v8a" to 4, "x86" to 4, "x86_64" to 4, "universal" to 4
+            )
+            variant.outputs.forEach { output ->
+                val abi = output.filters.find { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI }?.identifier ?: "universal"
+                val vName = output.versionName.orNull ?: "unknown"
+                output.outputFileName.set("v2rayNG_${vName}_${abi}.apk")
+                playCodes[abi]?.let { abiCode ->
+                    val vCode = output.versionCode.getOrElse(0)
+                    output.versionCode.set(abiCode * 1000000 + vCode)
+                }
+            }
+        }
+    }
 }
 
 dependencies {
