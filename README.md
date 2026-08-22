@@ -1,9 +1,4 @@
-پ
 # خورشید (Khorshid)
-
-<p align="center">
-  <img src="https://opengraph.githubassets.com/9d4900a4feeffbe3084feced37503d9570357840f698fb6eaa22ba4a91d955ff/uyscuti006/Khorshid" alt="Khorshid banner" width="600"/>
-</p>
 
 <p align="center">
   یک کلاینت V2ray برای اندروید، بر پایه‌ی <a href="https://github.com/2dust/v2rayNG">V2rayNG</a> — با قابلیت‌های اضافه‌شده برای اتصال پایدارتر و امن‌تر.
@@ -38,20 +33,18 @@
 - 📦 [GitHub Releases](https://github.com/uyscuti006/Khorshid/releases)
 - 📢 [کانال تلگرام خورشید](https://t.me/VPN_Khorshid)
 
-## ساخت از سورس (Build from Source)
+### کدام نسخه را نصب کنم؟
 
-```bash
-git clone --recursive https://github.com/uyscuti006/Khorshid.git
-cd Khorshid
-```
+در بخش Releases معمولاً چند فایل APK با نام‌های متفاوت (بر اساس معماری پردازنده‌ی گوشی) منتشر می‌شود. برای انتخاب درست:
 
-> پروژه شامل چند زیرماژول (submodule) است، از جمله `AndroidLibXrayLite` و `hev-socks5-tunnel`؛ حتماً با فلگ `--recursive` کلون کنید یا بعد از کلون دستور زیر را اجرا کنید:
+- اگر مطمئن نیستید گوشی‌تان چه معماری‌ای دارد، فایل **universal** (یا فایلی که هیچ پسوند معماری‌ای مثل `arm64-v8a`، `armeabi-v7a` یا `x86` ندارد) را نصب کنید؛ این نسخه روی همه‌ی گوشی‌ها کار می‌کند، فقط حجمش کمی بیشتر است.
+- اکثر گوشی‌های اندروید امروزی (تولید چند سال اخیر) از معماری **arm64-v8a** استفاده می‌کنند؛ اگر خواستید حجم کمتری دانلود کنید، همین نسخه مناسب شماست.
+- گوشی‌های خیلی قدیمی‌تر ممکن است **armeabi-v7a** باشند.
+- نسخه‌ی **x86 / x86_64** فقط برای شبیه‌سازها (emulator) یا برخی تبلت‌ها/لپ‌تاپ‌های اندرویدی کاربرد دارد.
 
-```bash
-git submodule update --init --recursive
-```
+اگر از معماری گوشی خود مطمئن نیستید، از اپلیکیشن‌هایی مثل CPU-Z روی گوشی استفاده کنید یا همان نسخه‌ی universal را نصب کنید.
 
-سپس پروژه را در **Android Studio** باز کرده و ماژول اصلی (`V2rayNG`) را Build/Run کنید. اسکریپت `compile-hevtun.sh` برای کامپایل کتابخانه‌ی تونل مورد نیاز است.
+> پیش از نصب، فعال بودن گزینه‌ی «نصب از منابع ناشناس» (Install unknown apps) برای مرورگر یا فایل‌منیجری که با آن APK را باز می‌کنید لازم است.
 
 ## این پروژه بر پایه‌ی چه چیزی ساخته شده؟
 
